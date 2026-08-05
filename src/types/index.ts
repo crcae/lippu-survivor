@@ -2,6 +2,8 @@
    Lippu Survivor — TypeScript Type Definitions
    ============================================ */
 
+export * from "./survivor";
+
 // ── Users ──
 
 export interface User {
@@ -98,4 +100,10 @@ export interface NFLGame {
   awayScore?: number;
   status: GameStatus;
   startTime: string;
+  /** Live game clock, e.g. "05:20" (ESPN `status.clock`). */
+  clock?: string;
+  /** Live game period, e.g. 3 for third quarter (ESPN `status.period`). */
+  period?: number;
+  /** Raw ESPN status detail, e.g. "Q3 5:20", "Halftime", "Final". */
+  statusDetail?: string;
 }
