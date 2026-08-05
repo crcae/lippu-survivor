@@ -4,6 +4,13 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogIn, Shield, Trophy, Users } from "lucide-react";
 import { Button, Card, useToast } from "@/components/ui";
+import {
+  getCurrentUser,
+  getLeagueByInviteCode,
+  joinLeagueInDb,
+  type CurrentUser,
+  type LeagueLookup,
+} from "@/lib/services/survivor-db";
 import { formatMoney } from "@/lib/survivor-utils";
 
 function hashString(value: string): number {
@@ -33,6 +40,7 @@ export default function JoinLeaguePage() {
   const { success } = useToast();
 
   const [code, setCode] = useState("");
+  const [entryName, setEntryName] = useState("Entrada #1");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -56,7 +64,7 @@ export default function JoinLeaguePage() {
 
   const canSubmit = value.length === 6 && preview !== null;
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!canSubmit) {
       setError("Ingresa un código de invitación válido de 6 caracteres.");
       return;
@@ -64,13 +72,60 @@ export default function JoinLeaguePage() {
     setError(null);
     setSubmitting(true);
 
+    // Try the real Supabase flow; fall back to demo if unavailable.
+    let user: CurrentUser | null = null;
+    let lookup: LeagueLookup | null | undefined;
+    try {
+      user = await getCurrentUser();
+      if (user) {
+        lookup = await getLeagueByInviteCode(value);
+      }
+    } catch {
+      lookup = undefined;
+    }
+
+    if (user && lookup !== undefined) {
+      if (!lookup) {
+        setSubmitting(false);
+        setError("No encontramos una liga con ese código.");
+        return;
+      }
+      const capacity = lookup.league.capacity;
+      if (
+        capacity !== null &&
+        capacity !== undefined &&
+        lookup.entryCount >= capacity
+      ) {
+        setSubmitting(false);
+        setError("Esta liga ya está llena.");
+        return;
+      }
+
+      try {
+        await joinLeagueInDb(
+          lookup.league.id,
+          user.id,
+          entryName.trim() || "Entrada #1",
+        );
+        setSubmitting(false);
+        success("¡Te has unido a la liga!");
+        setTimeout(() => {
+          router.push(`/league/${lookup!.league.id}`);
+        }, 1100);
+        return;
+      } catch {
+        setSubmitting(false);
+        setError("No se pudo unir a la liga. Intenta de nuevo.");
+        return;
+      }
+    }
+
+    // Demo fallback.
+    setSubmitting(false);
+    success("¡Te has unido a la liga!");
     setTimeout(() => {
-      setSubmitting(false);
-      success("¡Te has unido a la liga!");
-      setTimeout(() => {
-        router.push(`/league/${value.toLowerCase()}`);
-      }, 1100);
-    }, 1200);
+      router.push(`/league/${value.toLowerCase()}`);
+    }, 1100);
   };
 
   return (
@@ -116,6 +171,24 @@ export default function JoinLeaguePage() {
                 El código tiene {value.length}/6 caracteres.
               </p>
             )}
+          </div>
+
+          <div className="space-y-2">
+            <label htmlFor="entry-name" className="text-sm font-semibold text-text-primary">
+              Nombre de tu Entrada
+            </label>
+            <input
+              id="entry-name"
+              type="text"
+              value={entryName}
+              onChange={(e) => setEntryName(e.target.value)}
+              placeholder="Entrada #1"
+              maxLength={40}
+              className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm text-text-primary placeholder:text-text-secondary/50 focus:border-primary/60 focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all duration-200"
+            />
+            <p className="text-xs text-text-secondary">
+              Puedes cambiarlo después desde tu liga.
+            </p>
           </div>
 
           {error && (

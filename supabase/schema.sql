@@ -81,7 +81,7 @@ create table public.leagues (
   owner_id              uuid not null references public.profiles (id) on delete cascade,
   season_year           integer not null default 2026,
   max_entries_per_user  integer not null default 1 check (max_entries_per_user between 1 and 5),
-  max_capacity          integer, -- NULL = unlimited
+  capacity              integer, -- NULL = unlimited
   strikes_allowed       integer not null default 0 check (strikes_allowed between 0 and 1),
   entry_fee             numeric(10, 2) not null default 0,
   invite_code           text not null unique,
@@ -106,6 +106,7 @@ create table public.entries (
   league_id       uuid not null references public.leagues (id) on delete cascade,
   entry_name      text not null,
   status          entry_status not null default 'alive',
+  strikes         integer not null default 0 check (strikes >= 0),
   eliminated_week integer,
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now(),
@@ -188,11 +189,23 @@ create policy "Users can update their own profile"
   on public.profiles for update
   using (auth.uid() = id);
 
+-- A user can create their own profile row on first sign-in.
+create policy "Users can insert their own profile"
+  on public.profiles for insert
+  with check (auth.uid() = id);
+
 -- ── Leagues ──
--- Public leagues are readable by everyone.
-create policy "Active and completed leagues are readable"
+-- Public (active/completed) leagues are readable by everyone, and owners or
+-- members can always read their own leagues (including drafts).
+create policy "Leagues are readable by members and owners"
   on public.leagues for select
-  using (status in ('active', 'completed'));
+  using (
+    status in ('active', 'completed')
+    or owner_id = auth.uid()
+    or auth.uid() in (
+      select user_id from public.entries where league_id = id
+    )
+  );
 
 -- Owners manage their own leagues.
 create policy "Owners can insert leagues"
@@ -237,13 +250,21 @@ create policy "League owners can update entries"
   );
 
 -- ── Picks ──
--- A user can read picks for entries they own in leagues they belong to.
-create policy "Users can read their own picks"
+-- League owners and members can read picks for the league, which powers the
+-- leaderboard pick history. Covers the user's own picks too.
+create policy "League members can read picks"
   on public.picks for select
   using (
     exists (
       select 1 from public.entries e
-      where e.id = entry_id and e.user_id = auth.uid()
+      join public.leagues l on l.id = e.league_id
+      where e.id = entry_id
+        and (
+          l.owner_id = auth.uid()
+          or auth.uid() in (
+            select user_id from public.entries where league_id = l.id
+          )
+        )
     )
   );
 
@@ -284,17 +305,17 @@ select
   e.id as entry_id,
   e.entry_name,
   e.status,
-  count(p.id) filter (where p.result = 'loss') as strikes,
+  e.strikes,
   count(p.id) filter (where p.result = 'win') as wins
 from public.entries e
 left join public.picks p on p.entry_id = e.id
-group by e.league_id, e.user_id, e.id, e.entry_name, e.status;
+group by e.league_id, e.user_id, e.id, e.entry_name, e.status, e.strikes;
 
 -- ============================================================================
 -- Sample seed (optional, commented out)
 -- ============================================================================
 -- insert into public.leagues
---   (name, owner_id, season_year, max_entries_per_user, max_capacity,
+--   (name, owner_id, season_year, max_entries_per_user, capacity,
 --    strikes_allowed, entry_fee, invite_code, status)
 -- values
 --   ('Survivor NFL Lippu 2026', <owner_id>, 2026, 2, 10, 1, 50, 'LIP8XC', 'active');

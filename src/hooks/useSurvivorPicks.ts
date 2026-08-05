@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import type { NFLTeamId, WeekPicks } from "@/types";
 const STORAGE_PREFIX = "lippu_survivor_picks_";
 
@@ -35,38 +35,48 @@ function writePicks(key: string, picks: WeekPicks): void {
   }
 }
 
+interface UseSurvivorPicksOptions {
+  /**
+   * When `false`, picks live only in memory and are driven by the `seed`
+   * argument. Use this for DB-backed leagues where Supabase is the source of
+   * truth. Defaults to `true` (localStorage persistence, demo mode).
+   */
+  persist?: boolean;
+}
+
 /**
- * Persist the user's weekly picks per league (and optionally per entry) in
- * localStorage under `lippu_survivor_picks_[leagueId]`, SSR/hydration safe.
- * Passing an `entryId` scopes picks to a specific multi-entry context.
+ * Track the user's weekly picks per league (and optionally per entry).
+ *
+ * Demo mode (`persist: true`) keeps picks in localStorage under
+ * `lippu_survivor_picks_[leagueId]`, SSR/hydration safe. DB mode
+ * (`persist: false`) re-hydrates from the `seed` argument whenever it changes,
+ * so real leagues can feed Supabase picks straight into the hook.
  */
 export function useSurvivorPicks(
   leagueId: string,
   seed?: WeekPicks,
   entryId?: string,
+  options?: UseSurvivorPicksOptions,
 ) {
+  const persist = options?.persist ?? true;
   const storageKey = getStorageKey(leagueId, entryId);
 
   const [picks, setPicks] = useState<WeekPicks>(() =>
-    readPicks(storageKey, seed),
+    persist ? readPicks(storageKey, seed) : seed ?? {},
   );
 
-  // Persist on every change.
+  // Persist on every change (localStorage mode only).
   useEffect(() => {
-    writePicks(storageKey, picks);
-  }, [storageKey, picks]);
+    if (persist) writePicks(storageKey, picks);
+  }, [persist, storageKey, picks]);
 
-  // Re-hydrate if the league changes without remounting.
-  const previousKeyRef = useRef(storageKey);
+  // Re-hydrate when the league/entry or the DB-backed seed changes.
   useEffect(() => {
     const initial = setTimeout(() => {
-      if (previousKeyRef.current !== storageKey) {
-        previousKeyRef.current = storageKey;
-        setPicks(readPicks(storageKey, seed));
-      }
+      setPicks(persist ? readPicks(storageKey, seed) : seed ?? {});
     }, 0);
     return () => clearTimeout(initial);
-  }, [seed, storageKey]);
+  }, [persist, seed, storageKey]);
 
   const getPickForWeek = useCallback(
     (week: number): NFLTeamId | null => picks[week] ?? null,

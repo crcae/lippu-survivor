@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dices, Sparkles, Trophy } from "lucide-react";
 import { Button, Card, useToast } from "@/components/ui";
+import { createLeagueInDb } from "@/lib/services/survivor-db";
 import { SEASON_YEAR } from "@/lib/mock-survivor-data";
 import { formatMoney } from "@/lib/survivor-utils";
 
@@ -49,7 +50,7 @@ export default function CreateLeaguePage() {
     return isUnlimited ? `${formatMoney(maxPool)}+` : formatMoney(maxPool);
   }, [buyIn, capacityNumber, isUnlimited]);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (leagueName.trim().length < 3) {
       setError("El nombre de la liga debe tener al menos 3 caracteres.");
       return;
@@ -57,13 +58,30 @@ export default function CreateLeaguePage() {
     setError(null);
     setSubmitting(true);
 
-    setTimeout(() => {
+    try {
+      const { leagueId } = await createLeagueInDb({
+        name: leagueName.trim(),
+        seasonYear,
+        maxEntriesPerUser: maxEntries,
+        capacity: isUnlimited ? null : capacityNumber,
+        strikesAllowed: strikes,
+        entryFee: buyIn,
+        inviteCode: inviteCode.toUpperCase(),
+      });
+      setSubmitting(false);
+      success("¡Liga creada correctamente!");
+      setTimeout(() => {
+        router.push(`/league/${leagueId}`);
+      }, 1100);
+      return;
+    } catch {
+      // Supabase not configured or session missing → demo fallback.
       setSubmitting(false);
       success("¡Liga creada correctamente!");
       setTimeout(() => {
         router.push(`/league/${inviteCode.toLowerCase()}`);
       }, 1100);
-    }, 1200);
+    }
   };
 
   return (

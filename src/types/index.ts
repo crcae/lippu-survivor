@@ -28,6 +28,9 @@ export interface League {
   status: LeagueStatus;
   maxEntries: number;
   inviteCode: string;
+  capacity?: number;
+  strikesAllowed?: number;
+  entryFee?: number;
   createdAt: string;
   updatedAt: string;
 }
