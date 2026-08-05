@@ -34,11 +34,14 @@ function mapUserToProfile(user: User): AuthProfile {
     avatar_url?: string | null;
   };
 
+  const isGuest = user.is_anonymous === true || !user.email;
+
   return {
     id: user.id,
-    email: user.email ?? "",
-    displayName:
-      metadata.display_name ?? user.email?.split("@")[0] ?? "Jugador",
+    email: isGuest
+      ? `anon_${user.id.replace(/-/g, "").slice(0, 12)}@lippu.app`
+      : (user.email ?? ""),
+    displayName: metadata.display_name ?? (isGuest ? "Guest" : user.email?.split("@")[0] ?? "Jugador"),
     avatarUrl: metadata.avatar_url ?? null,
   };
 }
@@ -76,20 +79,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfile(nextUser ? mapUserToProfile(nextUser) : null);
     };
 
-    supabase.auth.getUser().then(({ data }) => {
-      sync(data.user);
-      setLoading(false);
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const nextUser = session?.user ?? null;
-      sync(nextUser);
-      setLoading(false);
-
-      if (!nextUser) return;
-
+    const upsertProfile = async (nextUser: User) => {
       const nextProfile = mapUserToProfile(nextUser);
       try {
         await supabase.from("profiles").upsert(
@@ -104,6 +94,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       } catch {
         // Profile write is best-effort; auth state is the source of truth.
       }
+    };
+
+    const ensureGuest = async () => {
+      // No session → create an anonymous auth user so every league, entry and
+      // pick persists. Requires "anonymous sign-ins" in the Supabase project.
+      const { data, error } = await supabase.auth.signInAnonymously();
+      if (disposed) return;
+      if (!error && data.user) {
+        sync(data.user);
+        void upsertProfile(data.user);
+      }
+    };
+
+    supabase.auth.getUser().then(({ data }) => {
+      if (disposed) return;
+      if (data.user) {
+        sync(data.user);
+        void upsertProfile(data.user);
+      } else {
+        void ensureGuest();
+      }
+      setLoading(false);
+    });
+
+    const {
+      data: { subscription },
+    } = supabase.auth.onAuthStateChange(async (_event, session) => {
+      const nextUser = session?.user ?? null;
+      sync(nextUser);
+      setLoading(false);
+
+      if (!nextUser) return;
+      void upsertProfile(nextUser);
     });
 
     return () => {

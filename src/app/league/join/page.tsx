@@ -1,13 +1,15 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LogIn, Shield, Trophy, Users } from "lucide-react";
+import { LogIn, Shield, Ticket, Trophy, Users } from "lucide-react";
 import { Button, Card, useToast } from "@/components/ui";
 import {
   getCurrentUser,
   getLeagueByInviteCode,
+  isSupabaseConfigured,
   joinLeagueInDb,
+  redeemTicketInDb,
   type CurrentUser,
   type LeagueLookup,
 } from "@/lib/services/survivor-db";
@@ -40,8 +42,10 @@ export default function JoinLeaguePage() {
   const { success } = useToast();
 
   const [code, setCode] = useState("");
+  const [ticketCode, setTicketCode] = useState("");
   const [entryName, setEntryName] = useState("Entrada #1");
   const [submitting, setSubmitting] = useState(false);
+  const [redeeming, setRedeeming] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const value = code
@@ -64,6 +68,62 @@ export default function JoinLeaguePage() {
 
   const canSubmit = value.length === 6 && preview !== null;
 
+  const redeemTicket = useCallback(
+    async (ticket: string) => {
+      const normalized = ticket.trim().toUpperCase();
+      if (!normalized) {
+        setError("Ingresa un código de ticket válido.");
+        return;
+      }
+
+      setError(null);
+      setRedeeming(true);
+
+      let user: CurrentUser | null = null;
+      try {
+        user = await getCurrentUser();
+      } catch {
+        user = null;
+      }
+
+      if (!user) {
+        setRedeeming(false);
+        setError(
+          isSupabaseConfigured()
+            ? "No se pudo iniciar sesión para canjear tu ticket. Intenta de nuevo."
+            : "Supabase no está configurado en este entorno.",
+        );
+        return;
+      }
+
+      try {
+        const result = await redeemTicketInDb(normalized, user.id);
+        setRedeeming(false);
+        success("¡Ticket canjeado! Bienvenido a la liga.");
+        setTimeout(() => {
+          router.push(`/league/${result.leagueId}`);
+        }, 900);
+      } catch (err) {
+        setRedeeming(false);
+        setError(err instanceof Error ? err.message : "No se pudo canjear el ticket.");
+      }
+    },
+    [router, success],
+  );
+
+  // Auto-redeem a ticket passed via ?ticket=CODE.
+  useEffect(() => {
+    const ticket = new URLSearchParams(window.location.search).get("ticket");
+    if (!ticket) return;
+
+    const autoRedeem = setTimeout(() => {
+      setTicketCode(ticket);
+      void redeemTicket(ticket);
+    }, 0);
+
+    return () => clearTimeout(autoRedeem);
+  }, [redeemTicket]);
+
   const handleSubmit = async () => {
     if (!canSubmit) {
       setError("Ingresa un código de invitación válido de 6 caracteres.");
@@ -72,7 +132,7 @@ export default function JoinLeaguePage() {
     setError(null);
     setSubmitting(true);
 
-    // Try the real Supabase flow; fall back to demo if unavailable.
+    // Try the real Supabase flow; fall back to demo only when not configured.
     let user: CurrentUser | null = null;
     let lookup: LeagueLookup | null | undefined;
     try {
@@ -120,7 +180,7 @@ export default function JoinLeaguePage() {
       }
     }
 
-    // Demo fallback.
+    // Demo fallback (only reached when Supabase is not configured).
     setSubmitting(false);
     success("¡Te has unido a la liga!");
     setTimeout(() => {
@@ -139,18 +199,62 @@ export default function JoinLeaguePage() {
         <div className="mb-8 text-center">
           <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-surface-elevated border border-border text-sm text-accent font-medium mb-4">
             <LogIn className="w-4 h-4 text-primary" />
-            Únete con un código
+            Únete a una Liga
           </div>
           <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
             Unirse a una Liga
           </h1>
           <p className="text-text-secondary mt-2">
-            Pide el código de invitación al dueño de la liga y escribe aquí
-            abajo.
+            Canjea tu ticket de Lippu.app o usa el código de invitación del
+            dueño de la liga.
           </p>
         </div>
 
         <Card variant="elevated" className="p-6 sm:p-8 space-y-6">
+          {/* Ticket redemption */}
+          <div className="space-y-2 rounded-2xl border border-accent/40 bg-primary/10 p-4">
+            <label htmlFor="ticket-code" className="text-sm font-semibold text-text-primary">
+              <span className="inline-flex items-center gap-2">
+                <Ticket className="w-4 h-4 text-accent" />
+                Ticket de Lippu.app
+              </span>
+            </label>
+            <div className="flex gap-2">
+              <input
+                id="ticket-code"
+                type="text"
+                value={ticketCode}
+                onChange={(e) => setTicketCode(e.target.value)}
+                placeholder="LIPPU-TK-12345"
+                autoComplete="off"
+                autoCapitalize="characters"
+                className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-mono font-bold uppercase text-primary placeholder:text-text-secondary/30 focus:border-primary/60 focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all duration-200"
+              />
+              <Button
+                variant="accent"
+                size="md"
+                onClick={() => void redeemTicket(ticketCode)}
+                isLoading={redeeming}
+              >
+                {redeeming ? "Canjeando…" : "Canjear"}
+              </Button>
+            </div>
+            <p className="text-xs text-text-secondary">
+              ¿Compraste en Lippu.app? Pega tu código aquí o llega con{" "}
+              <span className="font-mono text-accent">?ticket=TU-CODIGO</span>.
+            </p>
+          </div>
+
+          {/* Divider */}
+          <div className="flex items-center gap-3">
+            <span className="h-px flex-1 bg-border" />
+            <span className="text-xs font-semibold uppercase tracking-wider text-text-secondary">
+              o únete con código
+            </span>
+            <span className="h-px flex-1 bg-border" />
+          </div>
+
+          {/* Invite code */}
           <div className="space-y-2">
             <label htmlFor="invite-code" className="text-sm font-semibold text-text-primary">
               Código de Invitación

@@ -8,6 +8,9 @@ export const runtime = "nodejs";
  * GET /api/nfl/scoreboard?week=X&year=2026
  * Returns parsed NFL games for a week, served from ESPN with a
  * fallback to mock data. HTTP caching keeps upstream rate limits low.
+ *
+ * The season is locked to 2026 (SEASON_YEAR): any other `year` is rejected
+ * so the app always reflects the current Lippu Survivor season.
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -16,9 +19,7 @@ export async function GET(request: NextRequest) {
   const yearParam = searchParams.get("year");
 
   const week = weekParam ? Number.parseInt(weekParam, 10) : Number.NaN;
-  const year = yearParam
-    ? Number.parseInt(yearParam, 10)
-    : SEASON_YEAR;
+  const year = yearParam ? Number.parseInt(yearParam, 10) : SEASON_YEAR;
 
   if (!Number.isInteger(week) || week < 1 || week > 18) {
     return NextResponse.json(
@@ -27,9 +28,9 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  if (!Number.isInteger(year) || year < 2000 || year > 2100) {
+  if (year !== SEASON_YEAR) {
     return NextResponse.json(
-      { error: "Parámetro 'year' inválido." },
+      { error: `La temporada está fijada al año ${SEASON_YEAR}.` },
       { status: 400 },
     );
   }

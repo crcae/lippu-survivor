@@ -1,5 +1,6 @@
 "use client";
 
+import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import type {
   EntryStatus,
@@ -9,6 +10,14 @@ import type {
   PickResult,
   WeekPicks,
 } from "@/types";
+
+/** True when Supabase credentials exist, so callers never fall back to mock. */
+export function isSupabaseConfigured(): boolean {
+  return Boolean(
+    process.env.NEXT_PUBLIC_SUPABASE_URL &&
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY,
+  );
+}
 
 // ── Database row shapes (snake_case) ────────────────────────────────────────
 
@@ -66,11 +75,26 @@ interface LeaderboardRow {
 export interface CreateLeaguePayload {
   name: string;
   seasonYear: number;
-  maxEntriesPerUser: number;
+  /** Defaults to `null` (unlimited) when omitted. */
   capacity?: number | null;
+  /** Defaults to `20` (one per purchased ticket) when omitted. */
+  maxEntriesPerUser?: number;
   strikesAllowed: number;
-  entryFee: number;
+  /** Defaults to `0` (monetization happens on Lippu.app) when omitted. */
+  entryFee?: number;
   inviteCode: string;
+}
+
+export interface TicketTokenPayload {
+  ticketCode: string;
+  leagueId: string;
+  entriesCount?: number;
+  userEmail?: string;
+}
+
+export interface TicketRedeemResult {
+  leagueId: string;
+  entryIds: string[];
 }
 
 export interface LeagueEntry {
@@ -138,30 +162,76 @@ const NO_ROWS = ["00000000-0000-0000-0000-000000000000"];
 
 // ── Identity helper ─────────────────────────────────────────────────────────
 
-/**
- * Returns the authenticated Supabase user, or `null` when no session exists.
- * Throws when the Supabase environment variables are missing.
- */
-export async function getCurrentUser(): Promise<CurrentUser | null> {
-  const supabase = createClient();
-
-  const {
-    data: { user },
-    error,
-  } = await supabase.auth.getUser();
-
-  if (error || !user) return null;
-
-  const metadata = user.user_metadata as {
+function mapUser(user: User): CurrentUser {
+  const metadata = (user.user_metadata ?? {}) as {
     display_name?: string;
   } | null;
 
+  const isGuest = user.is_anonymous === true || !user.email;
+
   return {
     id: user.id,
-    email: user.email ?? "",
-    displayName:
-      metadata?.display_name ?? user.email?.split("@")[0] ?? "Player",
+    email: isGuest ? `anon_${user.id.replace(/-/g, "").slice(0, 12)}@lippu.app` : (user.email ?? ""),
+    displayName: metadata?.display_name ?? (isGuest ? "Guest" : user.email?.split("@")[0] ?? "Jugador"),
   };
+}
+
+/**
+ * Ensures a `profiles` row exists for the given user. Idempotent: relies on
+ * the unique `id` PK and RLS insert policy (`auth.uid() = id`).
+ */
+async function ensureProfileRow(user: CurrentUser): Promise<void> {
+  const supabase = createClient();
+  const { error } = await supabase.from("profiles").upsert(
+    {
+      id: user.id,
+      email: user.email,
+      display_name: user.displayName,
+      avatar_url: null,
+    },
+    { onConflict: "id", ignoreDuplicates: true },
+  );
+  if (error) throw error;
+}
+
+/**
+ * Returns the current Supabase user. When no session exists, creates an
+ * anonymous (guest) auth session via `signInAnonymously` and upserts a
+ * `profiles` row so that every league, entry and pick persists to Supabase.
+ *
+ * Requires anonymous sign-ins enabled in the Supabase project. Returns `null`
+ * when the env vars are missing or a session cannot be established.
+ */
+export async function getCurrentUser(): Promise<CurrentUser | null> {
+  let supabase: ReturnType<typeof createClient>;
+  try {
+    supabase = createClient();
+  } catch {
+    return null;
+  }
+
+  let user: User | null = null;
+
+  const existing = await supabase.auth.getUser();
+  if (existing.data.user) {
+    user = existing.data.user;
+  } else {
+    const guest = await supabase.auth.signInAnonymously();
+    if (!guest.error && guest.data.user) {
+      user = guest.data.user;
+    }
+  }
+
+  if (!user) return null;
+
+  const current = mapUser(user);
+  try {
+    await ensureProfileRow(current);
+  } catch {
+    // Best-effort: auth state is still the source of truth for the session.
+  }
+
+  return current;
 }
 
 // ── Leagues ─────────────────────────────────────────────────────────────────
@@ -169,6 +239,9 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 /**
  * Creates a league owned by the current user. Guarantees a `profiles` row for
  * the owner and registers their first `entries` row. Returns the new league id.
+ *
+ * Never falls back to mock data: throws when Supabase is unavailable so the
+ * caller can surface the error to the user.
  */
 export async function createLeagueInDb(
   payload: CreateLeaguePayload,
@@ -197,10 +270,10 @@ export async function createLeagueInDb(
       name: payload.name,
       owner_id: user.id,
       season_year: payload.seasonYear,
-      max_entries_per_user: payload.maxEntriesPerUser,
+      max_entries_per_user: payload.maxEntriesPerUser ?? 20,
       capacity: payload.capacity ?? null,
       strikes_allowed: payload.strikesAllowed,
-      entry_fee: payload.entryFee,
+      entry_fee: payload.entryFee ?? 0,
       invite_code: payload.inviteCode,
       status: "active",
     })
@@ -254,6 +327,12 @@ export async function joinLeagueInDb(
   entryName: string,
 ): Promise<{ entryId: string }> {
   const supabase = createClient();
+
+  try {
+    await ensureProfileRow({ id: userId, email: "", displayName: "Jugador" });
+  } catch {
+    // Best-effort profile sync; entry insert below is the source of truth.
+  }
 
   const { data: league, error: leagueError } = await supabase
     .from("leagues")
@@ -435,4 +514,144 @@ export async function savePickInDb(
     { onConflict: "entry_id,week" },
   );
   if (error) throw error;
+}
+
+// ── Ticket Tokens (Lippu.app / Bubble.io integration) ───────────────────────
+
+interface TicketTokenRow {
+  id: string;
+  code: string;
+  league_id: string;
+  entries_count: number;
+  user_email: string | null;
+  status: "available" | "redeemed" | "expired";
+  redeemed_at: string | null;
+}
+
+/**
+ * Looks up a ticket token by its public redemption code, returning the
+ * normalized token plus the league id it grants access to. Returns `null`
+ * when the code doesn't exist.
+ */
+export async function getTicketToken(
+  ticketCode: string,
+): Promise<TicketTokenRow | null> {
+  const supabase = createClient();
+
+  const { data } = await supabase
+    .from("ticket_tokens")
+    .select("*")
+    .eq("code", ticketCode.trim().toUpperCase())
+    .maybeSingle();
+
+  return (data as TicketTokenRow | null) ?? null;
+}
+
+/**
+ * Mints a new ticket token in Supabase for Lippu to grant entries later.
+ * Used server-side by `/api/v1/tickets/create`.
+ */
+export async function createTicketTokenInDb(
+  payload: TicketTokenPayload,
+): Promise<{ ticketId: string }> {
+  const supabase = createClient();
+
+  const { data, error } = await supabase
+    .from("ticket_tokens")
+    .insert({
+      code: payload.ticketCode.trim().toUpperCase(),
+      league_id: payload.leagueId,
+      entries_count: payload.entriesCount ?? 1,
+      user_email: payload.userEmail ?? null,
+      status: "available",
+    })
+    .select("id")
+    .single();
+  if (error) throw error;
+
+  return { ticketId: data.id };
+}
+
+/**
+ * Redeems an available ticket token and creates `entries_count` entries for
+ * the given user inside the token's league. Returns the league id + the
+ * created entry ids.
+ */
+export async function redeemTicketInDb(
+  ticketCode: string,
+  userId: string,
+): Promise<TicketRedeemResult> {
+  const supabase = createClient();
+
+  const token = await getTicketToken(ticketCode);
+  if (!token) {
+    throw new Error("No encontramos un ticket con ese código.");
+  }
+  if (token.status !== "available") {
+    throw new Error("Este ticket ya fue canjeado.");
+  }
+
+  const { data: league, error: leagueError } = await supabase
+    .from("leagues")
+    .select("capacity")
+    .eq("id", token.league_id)
+    .maybeSingle();
+  if (leagueError) throw leagueError;
+  if (!league) {
+    throw new Error("La liga asociada a este ticket ya no existe.");
+  }
+
+  const { count: totalEntries } = await supabase
+    .from("entries")
+    .select("*", { count: "exact", head: true })
+    .eq("league_id", token.league_id);
+
+  if (
+    league.capacity !== null &&
+    totalEntries !== null &&
+    totalEntries >= league.capacity
+  ) {
+    throw new Error("Esta liga ya está llena.");
+  }
+
+  const { data: existingNames } = await supabase
+    .from("entries")
+    .select("entry_name")
+    .eq("league_id", token.league_id);
+  const names = new Set((existingNames ?? []).map((row) => row.entry_name));
+
+  const entryIds: string[] = [];
+  for (let i = 1; i <= token.entries_count; i++) {
+    let entryName = `Entrada #${i}`;
+    let suffix = 2;
+    while (names.has(entryName)) {
+      entryName = `Entrada #${suffix}`;
+      suffix += 1;
+    }
+    names.add(entryName);
+
+    const { data: entry, error: entryError } = await supabase
+      .from("entries")
+      .insert({
+        user_id: userId,
+        league_id: token.league_id,
+        entry_name: entryName,
+      })
+      .select("id")
+      .single();
+    if (entryError) throw entryError;
+    entryIds.push(entry.id);
+  }
+
+  const { error: redeemError } = await supabase
+    .from("ticket_tokens")
+    .update({
+      status: "redeemed",
+      redeemed_at: new Date().toISOString(),
+      redeemed_by: userId,
+    })
+    .eq("id", token.id);
+  if (redeemError) throw redeemError;
+
+  return { leagueId: token.league_id, entryIds };
 }

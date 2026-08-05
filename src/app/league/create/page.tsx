@@ -1,21 +1,16 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Dices, Sparkles, Trophy } from "lucide-react";
+import { Dices, Sparkles } from "lucide-react";
 import { Button, Card, useToast } from "@/components/ui";
-import { createLeagueInDb } from "@/lib/services/survivor-db";
+import { createLeagueInDb, isSupabaseConfigured } from "@/lib/services/survivor-db";
 import { SEASON_YEAR } from "@/lib/mock-survivor-data";
-import { formatMoney } from "@/lib/survivor-utils";
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-const CAPACITY_OPTIONS = [
-  { value: "10", label: "10" },
-  { value: "25", label: "25" },
-  { value: "50", label: "50" },
-  { value: "100", label: "100" },
-  { value: "unlimited", label: "Ilimitada" },
-];
+const CAPACITY_PRESETS = [10, 50, 100, 500];
+const CUSTOM = "custom";
+const UNLIMITED = "unlimited";
 
 function generateInviteCode(): string {
   const random = Array.from(
@@ -33,39 +28,48 @@ export default function CreateLeaguePage() {
   const { success } = useToast();
 
   const [leagueName, setLeagueName] = useState("");
-  const [seasonYear, setSeasonYear] = useState(SEASON_YEAR);
-  const [maxEntries, setMaxEntries] = useState(1);
-  const [capacity, setCapacity] = useState("25");
+  const [capacityMode, setCapacityMode] = useState<string>("50");
+  const [customCapacity, setCustomCapacity] = useState("");
   const [strikes, setStrikes] = useState(0);
-  const [buyIn, setBuyIn] = useState(50);
   const [inviteCode, setInviteCode] = useState(() => generateInviteCode());
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
-  const isUnlimited = capacity === "unlimited";
-  const capacityNumber = isUnlimited ? 100 : Number(capacity);
+  const isUnlimited = capacityMode === UNLIMITED;
+  const isCustom = capacityMode === CUSTOM;
 
-  const estimatedPrizePool = useMemo(() => {
-    const maxPool = buyIn * capacityNumber;
-    return isUnlimited ? `${formatMoney(maxPool)}+` : formatMoney(maxPool);
-  }, [buyIn, capacityNumber, isUnlimited]);
+  const resolveCapacity = (): number | null => {
+    if (isUnlimited) return null;
+    if (isCustom) {
+      const parsed = Number.parseInt(customCapacity, 10);
+      return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+    }
+    return Number.parseInt(capacityMode, 10);
+  };
 
   const handleSubmit = async () => {
     if (leagueName.trim().length < 3) {
       setError("El nombre de la liga debe tener al menos 3 caracteres.");
       return;
     }
+
+    if (isCustom) {
+      const parsed = Number.parseInt(customCapacity, 10);
+      if (!Number.isFinite(parsed) || parsed < 1 || parsed > 10_000) {
+        setError("Ingresa una capacidad válida (entre 1 y 10,000 jugadores).");
+        return;
+      }
+    }
+
     setError(null);
     setSubmitting(true);
 
     try {
       const { leagueId } = await createLeagueInDb({
         name: leagueName.trim(),
-        seasonYear,
-        maxEntriesPerUser: maxEntries,
-        capacity: isUnlimited ? null : capacityNumber,
+        seasonYear: SEASON_YEAR,
+        capacity: resolveCapacity(),
         strikesAllowed: strikes,
-        entryFee: buyIn,
         inviteCode: inviteCode.toUpperCase(),
       });
       setSubmitting(false);
@@ -73,14 +77,17 @@ export default function CreateLeaguePage() {
       setTimeout(() => {
         router.push(`/league/${leagueId}`);
       }, 1100);
-      return;
     } catch {
-      // Supabase not configured or session missing → demo fallback.
       setSubmitting(false);
-      success("¡Liga creada correctamente!");
-      setTimeout(() => {
-        router.push(`/league/${inviteCode.toLowerCase()}`);
-      }, 1100);
+      if (isSupabaseConfigured()) {
+        setError(
+          "No se pudo crear la liga. Verifica que Supabase esté configurado y que los sign-in anónimos estén habilitados.",
+        );
+      } else {
+        setError(
+          "Supabase no está configurado. Copia `.env.example` a `.env.local` con tus credenciales.",
+        );
+      }
     }
   };
 
@@ -102,7 +109,7 @@ export default function CreateLeaguePage() {
           </h1>
           <p className="text-text-secondary mt-2">
             Configura tu pool, comparte el código de invitación y recluta a tus
-            amigos.
+            amigos. La monetización se gestiona en Lippu.app.
           </p>
         </div>
 
@@ -123,24 +130,18 @@ export default function CreateLeaguePage() {
             />
           </div>
 
+          {/* Season + Strikes */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            {/* Season year */}
             <div className="space-y-2">
-              <label htmlFor="season-year" className="text-sm font-semibold text-text-primary">
+              <label className="text-sm font-semibold text-text-primary">
                 Temporada
               </label>
-              <select
-                id="season-year"
-                value={seasonYear}
-                onChange={(e) => setSeasonYear(Number(e.target.value))}
-                className={inputClass}
-              >
-                {[2026, 2027, 2028].map((year) => (
-                  <option key={year} value={year}>
-                    {year}
-                  </option>
-                ))}
-              </select>
+              <div className="rounded-xl border border-accent/40 bg-primary/10 px-4 py-2.5 text-sm text-accent font-bold">
+                NFL {SEASON_YEAR}
+              </div>
+              <p className="text-xs text-text-secondary">
+                Los datos de partidos provienen en vivo de ESPN.
+              </p>
             </div>
 
             {/* Strikes */}
@@ -165,79 +166,75 @@ export default function CreateLeaguePage() {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            {/* Max entries per user */}
-            <div className="space-y-2">
-              <label htmlFor="max-entries" className="text-sm font-semibold text-text-primary">
-                Entradas por Usuario
-              </label>
-              <select
-                id="max-entries"
-                value={maxEntries}
-                onChange={(e) => setMaxEntries(Number(e.target.value))}
-                className={inputClass}
+          {/* Capacity */}
+          <div className="space-y-2">
+            <label htmlFor="capacity" className="text-sm font-semibold text-text-primary">
+              Capacidad de la Liga
+            </label>
+            <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5">
+              {CAPACITY_PRESETS.map((value) => (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setCapacityMode(String(value))}
+                  className={`px-2 py-2.5 rounded-xl border text-xs font-bold transition-all duration-200 focus-ring ${
+                    capacityMode === String(value)
+                      ? "bg-primary border-primary text-white shadow-glow"
+                      : "bg-surface border-border text-text-secondary hover:border-primary/40 hover:text-text-primary"
+                  }`}
+                >
+                  {value}
+                </button>
+              ))}
+              <button
+                type="button"
+                onClick={() => setCapacityMode(CUSTOM)}
+                className={`px-2 py-2.5 rounded-xl border text-xs font-bold transition-all duration-200 focus-ring ${
+                  isCustom
+                    ? "bg-primary border-primary text-white shadow-glow"
+                    : "bg-surface border-border text-text-secondary hover:border-primary/40 hover:text-text-primary"
+                }`}
               >
-                {[1, 2, 3, 4, 5].map((n) => (
-                  <option key={n} value={n}>
-                    {n} {n === 1 ? "entrada" : "entradas"}
-                  </option>
-                ))}
-              </select>
+                Custom
+              </button>
+              <button
+                type="button"
+                onClick={() => setCapacityMode(UNLIMITED)}
+                className={`px-2 py-2.5 rounded-xl border text-xs font-bold transition-all duration-200 focus-ring ${
+                  isUnlimited
+                    ? "bg-primary border-primary text-white shadow-glow"
+                    : "bg-surface border-border text-text-secondary hover:border-primary/40 hover:text-text-primary"
+                }`}
+              >
+                Ilimitada
+              </button>
             </div>
 
-            {/* Capacity */}
-            <div className="space-y-2">
-              <label htmlFor="capacity" className="text-sm font-semibold text-text-primary">
-                Capacidad Máxima
-              </label>
-              <div className="grid grid-cols-5 gap-1.5">
-                {CAPACITY_OPTIONS.map((option) => (
-                  <button
-                    key={option.value}
-                    type="button"
-                    onClick={() => setCapacity(option.value)}
-                    className={`px-2 py-2.5 rounded-xl border text-xs font-bold transition-all duration-200 focus-ring ${
-                      capacity === option.value
-                        ? "bg-primary border-primary text-white shadow-glow"
-                        : "bg-surface border-border text-text-secondary hover:border-primary/40 hover:text-text-primary"
-                    }`}
-                  >
-                    {option.label}
-                  </button>
-                ))}
+            {isCustom && (
+              <div className="mt-3 space-y-1.5 animate-fade-in-up">
+                <label htmlFor="custom-capacity" className="text-xs font-semibold text-text-secondary">
+                  Capacidad personalizada
+                </label>
+                <input
+                  id="custom-capacity"
+                  type="number"
+                  min={1}
+                  max={10000}
+                  value={customCapacity}
+                  onChange={(e) => setCustomCapacity(e.target.value)}
+                  placeholder="Ej. 250"
+                  className={inputClass}
+                />
               </div>
-            </div>
-          </div>
+            )}
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-            {/* Buy-in */}
-            <div className="space-y-2">
-              <label htmlFor="buy-in" className="text-sm font-semibold text-text-primary">
-                Buy-in por Entrada (USD)
-              </label>
-              <input
-                id="buy-in"
-                type="number"
-                min={0}
-                step={5}
-                value={buyIn}
-                onChange={(e) => setBuyIn(Math.max(0, Number(e.target.value)))}
-                className={inputClass}
-              />
-            </div>
-
-            {/* Prize estimate */}
-            <div className="rounded-2xl border border-accent/30 bg-primary/10 p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center text-primary shrink-0">
-                <Trophy className="w-5 h-5" />
-              </div>
-              <div>
-                <p className="text-xs text-text-secondary">Premio estimado</p>
-                <p className="text-lg font-bold text-accent">
-                  {estimatedPrizePool}
-                </p>
-              </div>
-            </div>
+            <p className="text-xs text-text-secondary pt-1">
+              {isUnlimited
+                ? "Sin límite de jugadores."
+                : isCustom
+                  ? "Define cuántos jugadores pueden unirse."
+                  : `Hasta ${capacityMode} jugadores.`}
+            </p>
           </div>
 
           {/* Invite code */}
@@ -284,7 +281,7 @@ export default function CreateLeaguePage() {
           <p className="text-center text-xs text-text-secondary">
             Al crear la liga aceptas las{" "}
             <span className="text-accent font-semibold">Reglas del Survivor</span> y el
-            reglamento de la temporada {seasonYear}.
+            reglamento de la temporada {SEASON_YEAR}.
           </p>
         </Card>
       </main>

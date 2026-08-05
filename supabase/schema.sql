@@ -43,6 +43,13 @@ create type game_status as enum (
   'postponed'
 );
 
+-- Lifecycle of a Lippu ticket token (purchased on Lippu.app, redeemed in-app).
+create type ticket_status as enum (
+  'available',
+  'redeemed',
+  'expired'
+);
+
 -- ── Updated-at trigger (shared) ────────────────────────────────────────────
 
 -- Generic trigger function that stamps `updated_at = now()` before updates.
@@ -168,6 +175,32 @@ create trigger trg_nfl_games_updated_at
   before update on public.nfl_games
   for each row execute function set_updated_at();
 
+-- ── Ticket Tokens (Lippu.app integration) ───────────────────────────────────
+-- A token is minted by the Lippu (Bubble.io) backend when a user purchases
+-- one or more entries, and redeemed in-app to grant the buyer's entries.
+-- `code` is the public redemption code shown to the buyer (e.g. LIPPU-TK-XXXX).
+
+create table public.ticket_tokens (
+  id            uuid primary key default uuid_generate_v4(),
+  code          text not null unique,
+  league_id     uuid not null references public.leagues (id) on delete cascade,
+  entries_count integer not null default 1 check (entries_count between 1 and 20),
+  user_email    text,
+  status        ticket_status not null default 'available',
+  redeemed_at   timestamptz,
+  redeemed_by   uuid references public.profiles (id),
+  created_at    timestamptz not null default now(),
+  updated_at    timestamptz not null default now()
+);
+
+create index idx_ticket_tokens_code on public.ticket_tokens (code);
+create index idx_ticket_tokens_league on public.ticket_tokens (league_id);
+create index idx_ticket_tokens_status on public.ticket_tokens (status);
+
+create trigger trg_ticket_tokens_updated_at
+  before update on public.ticket_tokens
+  for each row execute function set_updated_at();
+
 -- ============================================================================
 -- Row Level Security
 -- ============================================================================
@@ -177,6 +210,7 @@ alter table public.leagues  enable row level security;
 alter table public.entries  enable row level security;
 alter table public.picks    enable row level security;
 alter table public.nfl_games enable row level security;
+alter table public.ticket_tokens enable row level security;
 
 -- ── Profiles ──
 -- Everyone can read profiles (to show names/avatars in leaderboards).
@@ -292,6 +326,25 @@ create policy "Users can update their own picks"
 create policy "NFL games are publicly readable"
   on public.nfl_games for select
   using (true);
+
+-- ── Ticket Tokens ──
+-- Lippu (Bubble.io) mints tokens via the anon key; users read + redeem them.
+-- NOTE: In production, gate minting behind the service role key or a shared
+-- secret; the public insert policy below is a pragmatic starter for the
+-- Bubble integration.
+
+create policy "Lippu can mint ticket tokens"
+  on public.ticket_tokens for insert
+  with check (true);
+
+create policy "Anyone can read ticket tokens"
+  on public.ticket_tokens for select
+  using (true);
+
+create policy "Anyone can update ticket tokens"
+  on public.ticket_tokens for update
+  using (true)
+  with check (true);
 
 -- ============================================================================
 -- Helper views
