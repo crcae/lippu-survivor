@@ -35,11 +35,16 @@ export function Modal({
     <dialog
       ref={dialogRef}
       onClose={onClose}
-      className={`backdrop:bg-black/60 backdrop:backdrop-blur-sm bg-surface-elevated border border-border rounded-2xl p-0 max-w-lg w-full shadow-elevated text-text-primary ${className}`}
+      className={`backdrop:bg-black/60 backdrop:backdrop-blur-sm bg-surface-elevated border border-border p-0 max-w-lg w-full shadow-elevated text-text-primary max-h-[90dvh] overflow-y-auto mt-auto mb-0 mx-auto rounded-t-2xl rounded-b-none sm:my-auto sm:rounded-2xl animate-sheet-in sm:animate-fade-in ${className}`}
     >
+      {/* Drag handle (mobile bottom sheet indicator) */}
+      <div className="sm:hidden flex justify-center pt-3 pb-1">
+        <span className="w-10 h-1 rounded-full bg-border/70" />
+      </div>
+
       {/* Header */}
       {title && (
-        <div className="flex items-center justify-between px-6 py-4 border-b border-border">
+        <div className="sticky top-0 z-10 flex items-center justify-between px-6 py-4 border-b border-border bg-surface-elevated">
           <h2 className="text-lg font-bold">{title}</h2>
           <button
             onClick={onClose}

@@ -193,7 +193,8 @@ export function TeamPickerGrid(props: TeamPickerGridProps) {
                   title={tooltip}
                   onClick={() => onSelect(teamId)}
                   className={[
-                    "group relative flex flex-col items-center gap-2 rounded-2xl border p-3 text-center transition-all duration-200 focus-ring",
+                    "group relative flex flex-col items-center gap-2 rounded-2xl border p-3 text-center transition-all duration-200 focus-ring min-h-14",
+                    canClick && "active:scale-95",
                     state.label === "selected"
                       ? "border-accent bg-primary/20 ring-1 ring-accent shadow-glow"
                       : state.label === "disabled"

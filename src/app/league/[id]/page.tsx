@@ -1,10 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import { ArrowLeft, Shield, Star } from "lucide-react";
-import Link from "next/link";
+import { Sparkles } from "lucide-react";
 
+import { useToast } from "@/components/ui";
+import {
+  MobileNav,
+  type MobileNavTab,
+} from "@/components/layout/MobileNav";
 import {
   CurrentPickBadge,
   LeagueHeader,
@@ -29,13 +33,17 @@ import type { NFLGame, NFLTeam, NFLTeamId, WeekPicks } from "@/types";
 
 const MOCK_LEAGUE = {
   name: "Survivor NFL Lippu 2026",
-  entryName: "Matias - Pick #1",
   totalEntries: 10,
   remainingEntries: 7,
   strikes: 0,
   strikesMax: 1,
   prizePool: 2400,
 };
+
+const MOCK_ENTRIES = [
+  { id: "entry-1", name: "Entrada #1 · Matías" },
+  { id: "entry-2", name: "Entrada #2 · Matías" },
+];
 
 const SEED_PICKS: WeekPicks = {
   1: "KC",
@@ -50,12 +58,17 @@ const POLL_INTERVAL_MS = 30_000;
 export default function LeaguePage() {
   const params = useParams<{ id: string }>();
   const leagueId = params.id;
+  const isDemo = leagueId === "demo";
+
+  const { success } = useToast();
 
   const [now, setNow] = useState<number | null>(null);
   const [currentWeek, setCurrentWeek] = useState<number>(ACTIVE_WEEK);
+  const [activeEntryId, setActiveEntryId] = useState<string>(MOCK_ENTRIES[0].id);
   const { picks, getPickForWeek, confirmPick } = useSurvivorPicks(
     leagueId,
-    SEED_PICKS,
+    activeEntryId === MOCK_ENTRIES[0].id ? SEED_PICKS : undefined,
+    activeEntryId,
   );
   const [selectedTeamId, setSelectedTeamId] = useState<NFLTeamId | null>(null);
 
@@ -69,6 +82,10 @@ export default function LeaguePage() {
   );
   const [isRulesOpen, setIsRulesOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [activeNavTab, setActiveNavTab] = useState<MobileNavTab>("pick");
+
+  const pickSectionRef = useRef<HTMLDivElement>(null);
+  const leaderboardRef = useRef<HTMLDivElement>(null);
 
   // Hydration-safe clock (skeleton until mounted).
   useEffect(() => {
@@ -189,6 +206,7 @@ export default function LeaguePage() {
   const handleConfirmPick = () => {
     if (pendingPickTeamId === null) return;
     confirmPick(currentWeek, pendingPickTeamId);
+    success("¡Pick confirmado para la semana " + currentWeek + "!");
     setSelectedTeamId(null);
     setPendingPickTeamId(null);
     setIsPickModalOpen(false);
@@ -205,6 +223,26 @@ export default function LeaguePage() {
     setSelectedTeamId(confirmedPickId);
     setPendingPickTeamId(confirmedPickId);
     setIsPickModalOpen(true);
+  };
+
+  const handleNavSelect = (tab: MobileNavTab) => {
+    setActiveNavTab(tab);
+
+    if (tab === "pick") {
+      pickSectionRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    } else if (tab === "tabla") {
+      leaderboardRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    } else if (tab === "historial") {
+      setIsHistoryOpen(true);
+    } else if (tab === "reglas") {
+      setIsRulesOpen(true);
+    }
   };
 
   const isReady =
@@ -231,41 +269,30 @@ export default function LeaguePage() {
         <div className="absolute bottom-[-10%] right-[-10%] w-[500px] h-[500px] rounded-full bg-accent/5 blur-[100px]" />
       </div>
 
-      {/* Header */}
-      <header className="relative z-10 border-b border-border/50 backdrop-blur-md bg-background/80">
-        <nav className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              className="inline-flex items-center gap-1.5 text-sm text-text-secondary hover:text-text-primary transition-colors focus-ring rounded-lg px-2 py-1"
-            >
-              <ArrowLeft className="w-4 h-4" />
-              Inicio
-            </Link>
-            <span className="w-px h-6 bg-border hidden sm:block" />
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shadow-glow">
-                <Shield className="w-4 h-4 text-white" />
-              </div>
-              <span className="hidden sm:inline text-sm font-bold text-text-primary">
-                Lippu <span className="text-primary">Survivor</span>
-              </span>
-            </div>
+      {/* Demo banner */}
+      {isDemo && (
+        <div className="relative z-10 border-b border-accent/30 bg-gradient-to-r from-primary/15 via-accent/10 to-primary/15">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 py-3 flex items-center gap-3">
+            <span className="w-8 h-8 rounded-lg bg-accent/20 flex items-center justify-center shrink-0">
+              <Sparkles className="w-4 h-4 text-accent" />
+            </span>
+            <p className="text-sm text-text-primary">
+              Estás navegando en la{" "}
+              <span className="font-bold text-accent">Liga de Demostración</span>.
+              Tu pick y tu historial se guardan solo en este navegador.
+            </p>
           </div>
-
-          <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-secondary/60 border border-border text-xs font-medium text-accent">
-            <Star className="w-3 h-3" />
-            Liga {leagueId} · {SEASON_YEAR}
-          </span>
-        </nav>
-      </header>
+        </div>
+      )}
 
       {/* Content */}
-      <main className="relative z-10 flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 py-8 space-y-8">
+      <main className="relative z-10 flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 pt-8 pb-28 md:pb-8 space-y-8">
         <LeagueHeader
           leagueName={MOCK_LEAGUE.name}
           status="alive"
-          entryName={MOCK_LEAGUE.entryName}
+          entries={MOCK_ENTRIES}
+          activeEntryId={activeEntryId}
+          onEntryChange={setActiveEntryId}
           remainingEntries={MOCK_LEAGUE.remainingEntries}
           totalEntries={MOCK_LEAGUE.totalEntries}
           strikes={MOCK_LEAGUE.strikes}
@@ -275,46 +302,53 @@ export default function LeaguePage() {
           onOpenHistory={() => setIsHistoryOpen(true)}
         />
 
-        <WeekSelector
-          weeks={WEEK_NUMBERS}
-          currentWeek={currentWeek}
-          completedWeeks={completedWeeks}
-          onChange={handleWeekChange}
-        />
+        <div ref={pickSectionRef} className="scroll-mt-24 space-y-8">
+          <WeekSelector
+            weeks={WEEK_NUMBERS}
+            currentWeek={currentWeek}
+            completedWeeks={completedWeeks}
+            onChange={handleWeekChange}
+          />
 
-        <CurrentPickBadge
-          week={currentWeek}
-          pick={pick}
-          now={now}
-          isConfirmed={isPickConfirmed}
-          onConfirm={handleRequestConfirm}
-          onChange={handleChangePick}
-        />
+          <CurrentPickBadge
+            week={currentWeek}
+            pick={pick}
+            now={now}
+            isConfirmed={isPickConfirmed}
+            onConfirm={handleRequestConfirm}
+            onChange={handleChangePick}
+          />
 
-        <TeamPickerGrid
-          week={currentWeek}
-          games={games}
-          now={now}
-          selectedTeamId={selectedTeamId}
-          confirmedPickId={confirmedPickId}
-          usedTeamWeeks={usedTeamWeeks}
-          dataSource={gamesSource}
-          onSelect={handleSelectTeam}
-        />
+          <TeamPickerGrid
+            week={currentWeek}
+            games={games}
+            now={now}
+            selectedTeamId={selectedTeamId}
+            confirmedPickId={confirmedPickId}
+            usedTeamWeeks={usedTeamWeeks}
+            dataSource={gamesSource}
+            onSelect={handleSelectTeam}
+          />
+        </div>
 
-        <LeaderboardTable
-          participants={MOCK_PARTICIPANTS}
-          highlightEntryId="u-matias"
-        />
+        <div ref={leaderboardRef} className="scroll-mt-24">
+          <LeaderboardTable
+            participants={MOCK_PARTICIPANTS}
+            highlightEntryId="u-matias"
+          />
+        </div>
       </main>
 
       {/* Footer */}
       <footer className="relative z-10 border-t border-border/50 bg-surface/50 backdrop-blur-sm">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-text-secondary">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 pb-24 md:pb-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-text-secondary">
           <span>© {SEASON_YEAR} Lippu Survivor. Todos los derechos reservados.</span>
           <span className="text-xs text-border">survivor.lippu.app</span>
         </div>
       </footer>
+
+      {/* Mobile bottom navigation */}
+      <MobileNav activeTab={activeNavTab} onSelect={handleNavSelect} />
 
       {/* Overlays */}
       {pendingPick !== null && (
@@ -331,12 +365,18 @@ export default function LeaguePage() {
 
       <LeagueRulesModal
         isOpen={isRulesOpen}
-        onClose={() => setIsRulesOpen(false)}
+        onClose={() => {
+          setIsRulesOpen(false);
+          setActiveNavTab("pick");
+        }}
       />
 
       <PickHistoryDrawer
         isOpen={isHistoryOpen}
-        onClose={() => setIsHistoryOpen(false)}
+        onClose={() => {
+          setIsHistoryOpen(false);
+          setActiveNavTab("pick");
+        }}
         picks={picks}
         currentWeek={currentWeek}
       />

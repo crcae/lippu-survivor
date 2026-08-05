@@ -1,6 +1,8 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import { Navbar } from "@/components/layout/Navbar";
+import { ToastProvider } from "@/components/ui";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -21,11 +23,23 @@ export const metadata: Metadata = {
   },
 };
 
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
+  viewportFit: "cover",
+  themeColor: "#100719",
+};
+
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="es" className={`${inter.variable} antialiased`}>
       <body className="min-h-screen bg-background text-text-primary font-sans">
-        {children}
+        <ToastProvider>
+          <Navbar />
+          {children}
+        </ToastProvider>
       </body>
     </html>
   );

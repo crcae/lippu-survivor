@@ -1,7 +1,7 @@
 "use client";
 
-import { Check } from "lucide-react";
-import { CalendarDays } from "lucide-react";
+import { useEffect, useRef } from "react";
+import { CalendarDays, Check } from "lucide-react";
 
 interface WeekSelectorProps {
   weeks: number[];
@@ -16,6 +16,17 @@ export function WeekSelector({
   completedWeeks,
   onChange,
 }: WeekSelectorProps) {
+  const pillRefs = useRef<Record<number, HTMLButtonElement | null>>({});
+
+  // Keep the active week centered on mobile once it mounts or changes.
+  useEffect(() => {
+    pillRefs.current[currentWeek]?.scrollIntoView({
+      behavior: "smooth",
+      block: "nearest",
+      inline: "center",
+    });
+  }, [currentWeek]);
+
   return (
     <div className="space-y-3">
       <div className="flex items-center gap-2">
@@ -26,7 +37,7 @@ export function WeekSelector({
       </div>
 
       <div
-        className="flex gap-2 overflow-x-auto pb-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex gap-2 overflow-x-auto pb-2 scroll-smooth snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
         role="tablist"
         aria-label="Semanas NFL"
       >
@@ -37,11 +48,14 @@ export function WeekSelector({
           return (
             <button
               key={week}
+              ref={(el) => {
+                pillRefs.current[week] = el;
+              }}
               type="button"
               role="tab"
               aria-selected={isCurrent}
               onClick={() => onChange(week)}
-              className={`shrink-0 inline-flex items-center gap-1.5 px-4 py-2 rounded-full border text-sm font-semibold transition-all duration-200 focus-ring ${
+              className={`shrink-0 snap-start inline-flex items-center gap-1.5 px-4 py-2 rounded-full border text-sm font-semibold transition-all duration-200 focus-ring active:scale-95 ${
                 isCurrent
                   ? "bg-primary text-white border-primary shadow-glow"
                   : isCompleted

@@ -4,8 +4,10 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { NFLTeamId, WeekPicks } from "@/types";
 const STORAGE_PREFIX = "lippu_survivor_picks_";
 
-function getStorageKey(leagueId: string): string {
-  return `${STORAGE_PREFIX}${leagueId}`;
+function getStorageKey(leagueId: string, entryId?: string): string {
+  return entryId
+    ? `${STORAGE_PREFIX}${leagueId}_${entryId}`
+    : `${STORAGE_PREFIX}${leagueId}`;
 }
 
 function readPicks(key: string, seed?: WeekPicks): WeekPicks {
@@ -34,11 +36,16 @@ function writePicks(key: string, picks: WeekPicks): void {
 }
 
 /**
- * Persist the user's weekly picks per league in localStorage under
- * `lippu_survivor_picks_[leagueId]`, SSR/hydration safe.
+ * Persist the user's weekly picks per league (and optionally per entry) in
+ * localStorage under `lippu_survivor_picks_[leagueId]`, SSR/hydration safe.
+ * Passing an `entryId` scopes picks to a specific multi-entry context.
  */
-export function useSurvivorPicks(leagueId: string, seed?: WeekPicks) {
-  const storageKey = getStorageKey(leagueId);
+export function useSurvivorPicks(
+  leagueId: string,
+  seed?: WeekPicks,
+  entryId?: string,
+) {
+  const storageKey = getStorageKey(leagueId, entryId);
 
   const [picks, setPicks] = useState<WeekPicks>(() =>
     readPicks(storageKey, seed),

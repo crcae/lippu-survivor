@@ -24,6 +24,9 @@ export type { LeaderboardTableProps } from "./LeaderboardTable";
 export { TeamMark } from "./TeamMark";
 export type { TeamMarkProps, TeamMarkSize } from "./TeamMark";
 
+export { EntrySwitcher } from "./EntrySwitcher";
+export type { EntrySwitcherProps, LeagueEntryOption } from "./EntrySwitcher";
+
 export { PickConfirmationModal } from "./PickConfirmationModal";
 export type { PickConfirmationModalProps } from "./PickConfirmationModal";
 

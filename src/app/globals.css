@@ -138,6 +138,28 @@ body {
   }
 }
 
+@keyframes sheet-in {
+  from {
+    opacity: 0;
+    transform: translateY(48px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(24px) scale(0.97);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) scale(1);
+  }
+}
+
 .animate-pulse-glow {
   animation: pulse-glow 3s ease-in-out infinite;
 }
@@ -156,4 +178,12 @@ body {
 
 .animate-drawer-in {
   animation: drawer-in 0.3s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-sheet-in {
+  animation: sheet-in 0.35s cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+.animate-toast-in {
+  animation: toast-in 0.25s cubic-bezier(0.16, 1, 0.3, 1) both;
 }

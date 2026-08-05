@@ -139,7 +139,7 @@ export function PickHistoryDrawer({
         role="dialog"
         aria-modal="true"
         aria-label="Mi historial de picks"
-        className="relative flex h-full w-full max-w-md flex-col border-l border-border bg-surface-elevated shadow-elevated animate-drawer-in"
+        className="relative flex h-full w-full flex-col border-l border-border bg-surface-elevated shadow-elevated animate-drawer-in sm:max-w-md"
       >
         {/* Header */}
         <div className="flex items-center justify-between border-b border-border px-6 py-4">
@@ -160,7 +160,7 @@ export function PickHistoryDrawer({
         </div>
 
         {/* Timeline */}
-        <div className="flex-1 overflow-y-auto px-6 py-5">
+        <div className="flex-1 overflow-y-auto px-6 py-5 pb-[calc(env(safe-area-inset-bottom)+1.25rem)]">
           <div className="flex items-center gap-2 mb-4">
             <span className="text-xs text-text-secondary">
               Semanas 1 a {currentWeek} · Temporada {SEASON_YEAR}

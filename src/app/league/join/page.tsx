@@ -1,0 +1,183 @@
+"use client";
+
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { LogIn, Shield, Trophy, Users } from "lucide-react";
+import { Button, Card, useToast } from "@/components/ui";
+import { formatMoney } from "@/lib/survivor-utils";
+
+function hashString(value: string): number {
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
+  }
+  return hash;
+}
+
+const PREVIEW_LEAGUE_NAMES = [
+  "Survivor NFL Lippu 2026",
+  "Liga de los Sábados",
+  "Gridiron Kings",
+  "No More Sundays",
+  "Campeones del Norte",
+  "Liga Poker & Football",
+];
+
+const PREVIEW_OWNERS = ["Matías", "Andrea", "Luis", "Sara", "Carlos"];
+
+const inputClass =
+  "w-full rounded-xl border border-border bg-surface px-4 py-3 text-center text-2xl font-mono font-bold tracking-[0.4em] uppercase text-primary placeholder:text-text-secondary/30 focus:border-primary/60 focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all duration-200";
+
+export default function JoinLeaguePage() {
+  const router = useRouter();
+  const { success } = useToast();
+
+  const [code, setCode] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const value = code
+    .toUpperCase()
+    .replace(/[^A-Z0-9]/g, "")
+    .slice(0, 6);
+
+  const preview = useMemo(() => {
+    if (value.length === 0) return null;
+    const h = hashString(value);
+    const players = 8 + (h % 42);
+    const prizePool = players * 50;
+    return {
+      name: PREVIEW_LEAGUE_NAMES[h % PREVIEW_LEAGUE_NAMES.length],
+      owner: PREVIEW_OWNERS[h % PREVIEW_OWNERS.length],
+      players,
+      prizePool,
+    };
+  }, [value]);
+
+  const canSubmit = value.length === 6 && preview !== null;
+
+  const handleSubmit = () => {
+    if (!canSubmit) {
+      setError("Ingresa un código de invitación válido de 6 caracteres.");
+      return;
+    }
+    setError(null);
+    setSubmitting(true);
+
+    setTimeout(() => {
+      setSubmitting(false);
+      success("¡Te has unido a la liga!");
+      setTimeout(() => {
+        router.push(`/league/${value.toLowerCase()}`);
+      }, 1100);
+    }, 1200);
+  };
+
+  return (
+    <div className="min-h-screen flex flex-col">
+      <div className="fixed inset-0 pointer-events-none overflow-hidden">
+        <div className="absolute top-[-20%] left-[-10%] w-[600px] h-[600px] rounded-full bg-primary/5 blur-[120px]" />
+        <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full bg-accent/5 blur-[100px]" />
+      </div>
+
+      <main className="relative z-10 flex-1 max-w-3xl w-full mx-auto px-4 sm:px-6 py-10">
+        <div className="mb-8 text-center">
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-surface-elevated border border-border text-sm text-accent font-medium mb-4">
+            <LogIn className="w-4 h-4 text-primary" />
+            Únete con un código
+          </div>
+          <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
+            Unirse a una Liga
+          </h1>
+          <p className="text-text-secondary mt-2">
+            Pide el código de invitación al dueño de la liga y escribe aquí
+            abajo.
+          </p>
+        </div>
+
+        <Card variant="elevated" className="p-6 sm:p-8 space-y-6">
+          <div className="space-y-2">
+            <label htmlFor="invite-code" className="text-sm font-semibold text-text-primary">
+              Código de Invitación
+            </label>
+            <input
+              id="invite-code"
+              type="text"
+              inputMode="text"
+              autoComplete="off"
+              autoCapitalize="characters"
+              value={value}
+              onChange={(e) => setCode(e.target.value)}
+              placeholder="LIPPU8"
+              className={inputClass}
+            />
+            {value.length > 0 && value.length < 6 && (
+              <p className="text-xs text-text-secondary">
+                El código tiene {value.length}/6 caracteres.
+              </p>
+            )}
+          </div>
+
+          {error && (
+            <p className="text-sm text-danger bg-danger/10 border border-danger/40 rounded-xl px-4 py-2.5">
+              {error}
+            </p>
+          )}
+
+          {/* Preview */}
+          {preview && (
+            <div className="rounded-2xl border border-accent/40 bg-primary/10 p-5 animate-fade-in-up">
+              <div className="flex items-center gap-2 mb-4">
+                <Shield className="w-5 h-5 text-primary" />
+                <p className="text-xs font-semibold uppercase tracking-wider text-accent">
+                  Vista previa de la liga
+                </p>
+              </div>
+
+              <p className="text-lg font-bold text-text-primary">
+                {preview.name}
+              </p>
+
+              <div className="grid grid-cols-3 gap-3 mt-4">
+                <div className="rounded-xl bg-surface border border-border p-3 text-center">
+                  <Users className="w-4 h-4 text-info mx-auto mb-1" />
+                  <p className="text-base font-bold text-text-primary">
+                    {preview.players}
+                  </p>
+                  <p className="text-[10px] text-text-secondary">Jugadores</p>
+                </div>
+                <div className="rounded-xl bg-surface border border-border p-3 text-center">
+                  <Trophy className="w-4 h-4 text-warning mx-auto mb-1" />
+                  <p className="text-base font-bold text-text-primary">
+                    {formatMoney(preview.prizePool)}
+                  </p>
+                  <p className="text-[10px] text-text-secondary">Premio Pool</p>
+                </div>
+                <div className="rounded-xl bg-surface border border-border p-3 text-center">
+                  <span className="block w-4 h-4 mx-auto mb-1 text-primary">
+                    <Shield className="w-4 h-4" />
+                  </span>
+                  <p className="text-base font-bold text-text-primary truncate">
+                    {preview.owner}
+                  </p>
+                  <p className="text-[10px] text-text-secondary">Comisionado</p>
+                </div>
+              </div>
+            </div>
+          )}
+
+          <Button
+            variant="primary"
+            size="lg"
+            className="w-full"
+            onClick={handleSubmit}
+            disabled={!canSubmit}
+            isLoading={submitting}
+          >
+            {submitting ? "Ingresando…" : "Confirmar e Ingresar"}
+          </Button>
+        </Card>
+      </main>
+    </div>
+  );
+}

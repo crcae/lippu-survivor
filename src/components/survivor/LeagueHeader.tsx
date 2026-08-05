@@ -2,7 +2,6 @@
 
 import {
   BookOpen,
-  ChevronDown,
   CircleDollarSign,
   History,
   Shield,
@@ -12,11 +11,17 @@ import {
 import { Badge } from "@/components/ui";
 import type { SurvivorStatus } from "@/types";
 import { formatPrizePool } from "@/lib/survivor-utils";
+import {
+  EntrySwitcher,
+  type LeagueEntryOption,
+} from "./EntrySwitcher";
 
 interface LeagueHeaderProps {
   leagueName: string;
   status: SurvivorStatus;
-  entryName: string;
+  entries: LeagueEntryOption[];
+  activeEntryId: string;
+  onEntryChange: (entryId: string) => void;
   remainingEntries: number;
   totalEntries: number;
   strikes: number;
@@ -29,7 +34,9 @@ interface LeagueHeaderProps {
 export function LeagueHeader({
   leagueName,
   status,
-  entryName,
+  entries,
+  activeEntryId,
+  onEntryChange,
   remainingEntries,
   totalEntries,
   strikes,
@@ -129,18 +136,11 @@ export function LeagueHeader({
           )}
 
           {/* Entry switcher */}
-          <button
-            type="button"
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-surface-elevated border border-border text-sm font-semibold text-text-primary hover:border-primary/40 hover:bg-surface transition-all duration-200 focus-ring"
-            title="Cambiar entrada"
-          >
-            <span className="flex items-center justify-center w-6 h-6 rounded-lg bg-primary/20 text-xs font-bold text-accent">
-              {entryName.charAt(0)}
-            </span>
-            <span className="hidden sm:inline">{entryName}</span>
-            <span className="sm:hidden">Pick #1</span>
-            <ChevronDown className="w-4 h-4 text-text-secondary" />
-          </button>
+          <EntrySwitcher
+            entries={entries}
+            activeEntryId={activeEntryId}
+            onChange={onEntryChange}
+          />
         </div>
       </div>
 
