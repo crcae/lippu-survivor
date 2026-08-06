@@ -576,19 +576,27 @@ export async function joinLeagueInDb(
 
 // ── Dashboard ───────────────────────────────────────────────────────────────
 
+const GAMES_CACHE_TTL_MS = 60_000;
+const gamesMemoryCache = new Map<
+  string,
+  { games: NFLGame[]; expiresAt: number }
+>();
+
 /**
  * Fetches the real games for a week directly from `public.nfl_games`. There is
  * NO mock fallback: the rows are the single source of truth for the season.
- *
- * The query is locked to the current season year (start_time >= `YYYY-01-01`)
- * so any legacy/corrupt rows (e.g. historical 2025 games) are never returned,
- * and rows are ordered chronologically (`start_time ASC`) so the earliest game
- * of the week renders first. Returns an empty list when the week has no games.
+ * Uses an in-memory TTL cache so subsequent week switches feel instantaneous (<200ms).
  */
 export async function getNflGamesInDb(
   week: number,
   year = SEASON_YEAR,
 ): Promise<NFLGame[]> {
+  const cacheKey = `${year}_w${week}`;
+  const cached = gamesMemoryCache.get(cacheKey);
+  if (cached && Date.now() < cached.expiresAt) {
+    return cached.games;
+  }
+
   const supabase = createClient();
 
   const { data, error } = await supabase
@@ -601,7 +609,12 @@ export async function getNflGamesInDb(
   if (error) throw error;
 
   if (data && data.length > 0) {
-    return data.map(mapNflGame);
+    const mapped = data.map(mapNflGame);
+    gamesMemoryCache.set(cacheKey, {
+      games: mapped,
+      expiresAt: Date.now() + GAMES_CACHE_TTL_MS,
+    });
+    return mapped;
   }
 
   // Auto-sync missing games for week from ESPN API into public.nfl_games
@@ -612,7 +625,7 @@ export async function getNflGamesInDb(
       });
     }
   } catch (syncErr) {
-    console.warn(`[survivor-db] Auto-sync triggered failed for week ${week}:`, syncErr);
+    console.warn(`[survivor-db] Auto-sync trigger failed for week ${week}:`, syncErr);
   }
 
   const { data: refreshed, error: refError } = await supabase
@@ -624,7 +637,12 @@ export async function getNflGamesInDb(
     .order("start_time", { ascending: true });
 
   if (!refError && refreshed && refreshed.length > 0) {
-    return refreshed.map(mapNflGame);
+    const mapped = refreshed.map(mapNflGame);
+    gamesMemoryCache.set(cacheKey, {
+      games: mapped,
+      expiresAt: Date.now() + GAMES_CACHE_TTL_MS,
+    });
+    return mapped;
   }
 
   return (data ?? []).map(mapNflGame);

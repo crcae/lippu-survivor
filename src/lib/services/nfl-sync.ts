@@ -65,8 +65,9 @@ export async function syncNflGamesInDb(
 
   const rows = games.map(
     (game): GameRow => {
+      const isWeek18 = game.week === 18;
       let startTime = game.startTime;
-      if (!startTime || Number.isNaN(new Date(startTime).getTime())) {
+      if (isWeek18 || !startTime || Number.isNaN(new Date(startTime).getTime())) {
         const janMonth = 0;
         const year = (game.seasonYear || SEASON_YEAR) + 1;
         startTime = new Date(Date.UTC(year, janMonth, 10, 18, 0, 0)).toISOString();
@@ -74,12 +75,12 @@ export async function syncNflGamesInDb(
       return {
         id: game.id,
         week: game.week,
-        season_year: game.seasonYear,
+        season_year: game.seasonYear || SEASON_YEAR,
         home_team_id: game.homeTeamId,
         away_team_id: game.awayTeamId,
-        home_score: game.homeScore ?? null,
-        away_score: game.awayScore ?? null,
-        status: game.status,
+        home_score: isWeek18 ? null : (game.homeScore ?? null),
+        away_score: isWeek18 ? null : (game.awayScore ?? null),
+        status: isWeek18 ? "scheduled" : game.status,
         start_time: startTime,
       };
     },
