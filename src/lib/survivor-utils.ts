@@ -25,6 +25,26 @@ export function formatKickoff(kickoffTime: string, now: number): string {
   return `${capitalize(weekday)} ${time}`;
 }
 
+/**
+ * Full, unambiguous kickoff date label, e.g. "Jue, 10 Sep 2026 • 20:20 hrs".
+ * Includes weekday, day number, month, year and time so users always see
+ * exactly WHEN a game takes place.
+ */
+export function formatFullGameDate(kickoffTime: string): string {
+  const date = new Date(kickoffTime);
+  const weekday = new Intl.DateTimeFormat("es-MX", { weekday: "short" }).format(date);
+  const day = new Intl.DateTimeFormat("es-MX", { day: "numeric" }).format(date);
+  const month = new Intl.DateTimeFormat("es-MX", { month: "short" }).format(date);
+  const year = new Intl.DateTimeFormat("es-MX", { year: "numeric" }).format(date);
+  const time = new Intl.DateTimeFormat("es-MX", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(date);
+
+  return `${abbreviate(weekday)}, ${day} ${abbreviate(month)} ${year} • ${time} hrs`;
+}
+
 /** Human-friendly countdown until a kickoff, e.g. "2d 14h", "5h 12m". */
 export function formatTimeLeft(kickoffTime: string, now: number): string {
   const diff = new Date(kickoffTime).getTime() - now;
@@ -105,6 +125,12 @@ export function formatPrizePool(amount: number): string {
 
 function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+/** Trim to a clean capitalized 3-letter abbreviation, e.g. "sept." → "Sep". */
+function abbreviate(value: string): string {
+  const trimmed = value.replace(".", "").slice(0, 3);
+  return trimmed.charAt(0).toUpperCase() + trimmed.slice(1);
 }
 
 /** Normalize an ESPN game clock, e.g. "5:20" → "05:20". */

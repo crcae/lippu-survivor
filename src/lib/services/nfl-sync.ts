@@ -134,12 +134,14 @@ export async function evaluatePicksForWeek(
   const pending = picks.filter((pick) => pick.result === "pending");
   if (pending.length === 0) return { evaluated: 0, eliminated: 0 };
 
-  // Only final games with both scores count for evaluation.
+  // Only final games with both scores count for evaluation. `start_time >=
+  // season start` excludes any legacy/corrupt rows (e.g. historical 2025).
   const { data: games, error: gamesError } = await supabase
     .from("nfl_games")
     .select("id, home_team_id, away_team_id, home_score, away_score, status")
     .eq("week", week)
-    .eq("season_year", SEASON_YEAR);
+    .eq("season_year", SEASON_YEAR)
+    .gte("start_time", `${SEASON_YEAR}-01-01`);
   if (gamesError) throw gamesError;
 
   type FinalGameRow = Pick<

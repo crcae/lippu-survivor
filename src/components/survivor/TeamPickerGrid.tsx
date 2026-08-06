@@ -4,10 +4,11 @@ import { Check, Lock } from "lucide-react";
 import { Badge } from "@/components/ui";
 import { getTeam } from "@/lib/mock-survivor-data";
 import {
+  formatFullGameDate,
   formatGameStatus,
-  formatKickoff,
   formatMatchup,
   formatScore,
+  formatTimeLeft,
   matchupForTeam,
 } from "@/lib/survivor-utils";
 import type { NFLGame, NFLTeamId } from "@/types";
@@ -112,7 +113,9 @@ function TeamGameInfo({
 
   return (
     <span className="text-[10px] text-text-secondary">
-      {formatKickoff(game.startTime, now)}
+      {new Date(game.startTime).getTime() <= now
+        ? "Kickoff iniciado"
+        : `En ${formatTimeLeft(game.startTime, now)}`}
     </span>
   );
 }
@@ -205,6 +208,11 @@ export function TeamPickerGrid(props: TeamPickerGridProps) {
                           : "border-border bg-surface hover:border-accent/60 hover:bg-surface-elevated hover:-translate-y-0.5 hover:shadow-card cursor-pointer",
                   ].join(" ")}
                 >
+                  {/* Game date tag — clearly visible at the top of each matchup card */}
+                  <span className="w-full text-[10px] font-semibold leading-tight text-text-secondary tabular-nums">
+                    {formatFullGameDate(game.startTime)}
+                  </span>
+
                   {/* Status icon */}
                   {state.label === "selected" && (
                     <span className="absolute top-2 right-2 w-5 h-5 rounded-full bg-accent flex items-center justify-center shadow-glow">

@@ -552,7 +552,11 @@ export async function joinLeagueInDb(
 /**
  * Fetches the real games for a week directly from `public.nfl_games`. There is
  * NO mock fallback: the rows are the single source of truth for the season.
- * Returns an empty list when the week has no synced games yet.
+ *
+ * The query is locked to the current season year (start_time >= `YYYY-01-01`)
+ * so any legacy/corrupt rows (e.g. historical 2025 games) are never returned,
+ * and rows are ordered chronologically (`start_time ASC`) so the earliest game
+ * of the week renders first. Returns an empty list when the week has no games.
  */
 export async function getNflGamesInDb(
   week: number,
@@ -565,6 +569,7 @@ export async function getNflGamesInDb(
     .select("*")
     .eq("week", week)
     .eq("season_year", year)
+    .gte("start_time", `${year}-01-01`)
     .order("start_time", { ascending: true });
   if (error) throw error;
 
@@ -772,12 +777,15 @@ export async function submitPickInDb(
   const supabase = createClient();
 
   // 1) Lock rule — the game must still be scheduled and in the future.
+  //    `start_time >= season start` also excludes any legacy/corrupt rows
+  //    (e.g. historical 2025 games) so they can never block a valid pick.
   const { data: game, error: gameError } = await supabase
     .from("nfl_games")
     .select("id, start_time, status")
     .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
     .eq("week", week)
     .eq("season_year", SEASON_YEAR)
+    .gte("start_time", `${SEASON_YEAR}-01-01`)
     .maybeSingle();
   if (gameError) throw gameError;
 
