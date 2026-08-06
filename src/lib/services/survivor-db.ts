@@ -430,7 +430,6 @@ export async function createLeagueInDb(
     throw new Error("Debes iniciar sesión para crear una liga.");
   }
 
-  console.log("[survivor-db] User profile check/creation...", { userId: user.id, isGuest: user.isGuest ?? false });
   const { error: profileError } = await supabase.from("profiles").upsert(
     {
       id: user.id,
@@ -442,7 +441,6 @@ export async function createLeagueInDb(
   );
   if (profileError) throwSupabaseError("inserción del perfil", profileError);
 
-  console.log("[survivor-db] Inserting league row...", { name: payload.name, inviteCode: payload.inviteCode });
   const { data: league, error: leagueError } = await supabase
     .from("leagues")
     .insert({
@@ -467,7 +465,6 @@ export async function createLeagueInDb(
   // entry fee (the dashboard redirects them to the checkout). Only free leagues
   // auto-register the owner's first entry here.
   if (payload.leagueType !== "paid") {
-    console.log("[survivor-db] Inserting owner entry row...", { leagueId: league.id });
     const { error: entryError } = await supabase.from("entries").insert({
       user_id: user.id,
       league_id: league.id,
@@ -476,7 +473,6 @@ export async function createLeagueInDb(
     if (entryError) throwSupabaseError("inserción de la entrada del dueño", entryError);
   }
 
-  console.log("[survivor-db] League created", { leagueId: league.id });
   return { leagueId: league.id };
 }
 

@@ -51,19 +51,13 @@ export async function GET(request: NextRequest) {
   // Both steps are best-effort and never break the scoreboard response.
   if (source === "espn") {
     try {
-      const { synced } = await syncNflGamesInDb(games);
-      console.log(`[nfl-sync] Semana ${week}: ${synced} partidos sincronizados`);
+      await syncNflGamesInDb(games);
     } catch (err) {
       console.error("[nfl-sync] No se pudieron sincronizar los partidos:", err);
     }
 
     try {
-      const { evaluated, eliminated } = await evaluatePendingPicksForSeason(week);
-      if (evaluated > 0) {
-        console.log(
-          `[nfl-sync] Evaluados ${evaluated} picks · ${eliminated} eliminaciones`,
-        );
-      }
+      await evaluatePendingPicksForSeason(week);
     } catch (err) {
       console.error("[nfl-sync] No se pudo evaluar la semana:", err);
     }

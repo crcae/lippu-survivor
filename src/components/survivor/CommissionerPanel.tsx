@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Crown, Link2, Users } from "lucide-react";
 import { Badge, Button, useToast } from "@/components/ui";
+import { APP_BASE_URL } from "@/lib/survivor-utils";
 import type { LeagueStatus } from "@/types";
 
 interface CommissionerPanelProps {
@@ -16,11 +17,7 @@ interface CommissionerPanelProps {
 }
 
 function inviteUrl(inviteCode: string): string {
-  const configuredBase = process.env.NEXT_PUBLIC_APP_URL ?? "";
-  const base =
-    configuredBase.replace(/\/+$/, "") ||
-    (typeof window !== "undefined" ? window.location.origin : "");
-  return `${base}/league/join?invite=${inviteCode}`;
+  return `${APP_BASE_URL}/league/join?invite=${inviteCode}`;
 }
 
 function copyText(text: string): Promise<void> {

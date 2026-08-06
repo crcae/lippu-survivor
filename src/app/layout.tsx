@@ -4,6 +4,7 @@ import "./globals.css";
 import { Navbar } from "@/components/layout/Navbar";
 import { ToastProvider } from "@/components/ui";
 import { AuthProvider } from "@/context/AuthContext";
+import { APP_BASE_URL } from "@/lib/survivor-utils";
 
 const inter = Inter({
   subsets: ["latin"],
@@ -12,14 +13,19 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
+  metadataBase: new URL(APP_BASE_URL),
   title: "Lippu Survivor 2026 — NFL Survivor Pool",
   description:
     "The ultimate NFL Survivor pool experience. Pick one team each week, survive the season, and claim the prize. Powered by Lippu.",
   keywords: ["NFL", "Survivor", "Pool", "Football", "Lippu", "2026"],
+  alternates: {
+    canonical: "/",
+  },
   openGraph: {
     title: "Lippu Survivor 2026",
     description: "The ultimate NFL Survivor pool experience.",
     siteName: "Lippu Survivor",
+    url: APP_BASE_URL,
     type: "website",
   },
 };

@@ -26,19 +26,14 @@ export const runtime = "nodejs";
  * `payments` row is stored with status 'declined' and the gateway message is
  * returned to the UI.
  *
- * Dev-only bypass: the reserved token `SIMULATED_TEST_TOKEN` skips Kushki and
- * creates the entry + an approved `payments` row with a `TEST-` ticket number.
- * It is only honoured outside production or when
- * `NEXT_PUBLIC_ENABLE_TEST_PAYMENTS=true`, and is rejected otherwise.
+ * Every request is charged live through Kushki. Tokens that do not match the
+ * expected Kushki token format are rejected with a 400 before any charge.
  */
 
 const KUSHKI_ENDPOINT = "https://api.kushkipagos.com/card/v1/charges";
 const KUSHKI_PRIVATE_MERCHANT_ID =
   process.env.KUSHKI_PRIVATE_MERCHANT_ID ?? "57ab8da330bf4fcd94082346992e823e";
 const CURRENCY = "MXN";
-
-/** Reserved token used by the dev-only simulated charge (never sent to Kushki). */
-const SIMULATED_TEST_TOKEN = "SIMULATED_TEST_TOKEN";
 
 /** Kushki amounts are sent in minor units (centavos). */
 function toMinorUnits(amount: number): number {
@@ -152,6 +147,12 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+  if (!/^[a-zA-Z0-9_-]{8,128}$/.test(token)) {
+    return NextResponse.json(
+      { success: false, message: "Token de pago inválido." },
+      { status: 400 },
+    );
+  }
   if (!leagueId || !userId) {
     return NextResponse.json(
       { success: false, message: "leagueId y userId son requeridos." },
@@ -225,65 +226,6 @@ export async function POST(request: Request) {
     return NextResponse.json(
       { success: false, message: "Esta liga ya está llena." },
       { status: 400 },
-    );
-  }
-
-  // ── Dev-only simulated charge ─────────────────────────────────────────────
-  // A reserved token lets developers test the full entry + payment flow without
-  // contacting Kushki. Only honoured outside production or when
-  // `NEXT_PUBLIC_ENABLE_TEST_PAYMENTS=true`; otherwise it is rejected outright.
-  const testPaymentsEnabled =
-    process.env.NODE_ENV !== "production" ||
-    process.env.NEXT_PUBLIC_ENABLE_TEST_PAYMENTS === "true";
-
-  if (token === SIMULATED_TEST_TOKEN) {
-    if (!testPaymentsEnabled) {
-      return NextResponse.json(
-        { success: false, message: "El modo de pruebas de pago está deshabilitado." },
-        { status: 403 },
-      );
-    }
-
-    const ticketNumber = `TEST-${Date.now()}`;
-    let entryId: string;
-    try {
-      // Mirrors `joinLeagueInDb` (per-user limit, unique name, capacity check)
-      // via the admin client — the free-join helper rejects paid leagues by
-      // design, so the entry is created here exactly like an approved charge.
-      entryId = await createPaidEntry(admin, league, userId, entryName ?? "Entrada #1");
-    } catch (err) {
-      console.error("[kushki/charge] El pago simulado fue aprobado pero la entrada falló:", err);
-      return NextResponse.json(
-        {
-          success: false,
-          message:
-            err instanceof Error
-              ? err.message
-              : "El pago simulado fue aprobado pero no se pudo crear tu entrada.",
-        },
-        { status: 200 },
-      );
-    }
-
-    try {
-      await admin.from("payments").insert({
-        league_id: leagueId,
-        user_id: userId,
-        entry_id: entryId,
-        ticket_amount: ticketAmount,
-        platform_fee_amount: platformFee,
-        total_paid: totalAmount,
-        currency: CURRENCY,
-        kushki_ticket_number: ticketNumber,
-        status: "approved",
-      });
-    } catch (err) {
-      console.error("[kushki/charge] No se pudo guardar el pago simulado:", err);
-    }
-
-    return NextResponse.json(
-      { success: true, ticketNumber, entryId, isSimulated: true },
-      { status: 200 },
     );
   }
 

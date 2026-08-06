@@ -4,6 +4,14 @@
 
 import type { NFLGame, NFLTeamId } from "@/types";
 
+/**
+ * Canonical production app origin for share links / metadata. Overridable via
+ * `NEXT_PUBLIC_APP_URL`, otherwise strictly `https://survivor.lippu.app`.
+ */
+export const APP_BASE_URL = (
+  process.env.NEXT_PUBLIC_APP_URL ?? "https://survivor.lippu.app"
+).replace(/\/+$/, "");
+
 /** Format a kickoff ISO timestamp as a compact "weekday HH:mm" label. */
 export function formatKickoff(kickoffTime: string, now: number): string {
   const date = new Date(kickoffTime);

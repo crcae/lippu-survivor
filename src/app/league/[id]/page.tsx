@@ -1,15 +1,8 @@
 import type { Metadata } from "next";
 
 import { createClient } from "@/lib/supabase/server";
+import { APP_BASE_URL } from "@/lib/survivor-utils";
 import { LeagueDashboard } from "./LeagueDashboardClient";
-
-const DEFAULT_APP_URL = "https://survivor.lippu.app";
-
-function appUrl(): string {
-  return (
-    process.env.NEXT_PUBLIC_APP_URL?.replace(/\/+$/, "") ?? DEFAULT_APP_URL
-  );
-}
 
 type LeaguePageProps = {
   params: Promise<{ id: string }>;
@@ -44,7 +37,7 @@ export async function generateMetadata({
   params,
 }: LeaguePageProps): Promise<Metadata> {
   const { id } = await params;
-  const base = appUrl();
+  const base = APP_BASE_URL;
 
   if (id === "demo") {
     const demoTitle = "Liga de Demostración | Lippu Survivor 2026";

@@ -16,7 +16,7 @@ import {
 import { Button, Card, useToast } from "@/components/ui";
 import { SEASON_YEAR } from "@/lib/mock-survivor-data";
 import { createLeagueInDb } from "@/lib/services/survivor-db";
-import { formatMxn } from "@/lib/survivor-utils";
+import { APP_BASE_URL, formatMxn } from "@/lib/survivor-utils";
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const PLATFORM_FEE_PERCENT = 8;
@@ -84,7 +84,7 @@ export default function CreateLeaguePage() {
       });
       setSubmitting(false);
 
-      const shareUrl = `${window.location.origin}/join/${leagueId}`;
+      const shareUrl = `${APP_BASE_URL}/join/${leagueId}`;
       success(
         leagueType === "paid"
           ? "¡Liga creada! Ahora paga tu entrada para activar tu liga."
