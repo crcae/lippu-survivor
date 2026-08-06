@@ -16,8 +16,14 @@ export async function createClient() {
   const cookieStore = await cookies();
 
   if (!supabaseUrl || !supabaseAnonKey) {
+    const missingVars: string[] = [];
+    if (!supabaseUrl) missingVars.push("NEXT_PUBLIC_SUPABASE_URL");
+    if (!supabaseAnonKey) missingVars.push("NEXT_PUBLIC_SUPABASE_ANON_KEY");
+    console.error("[supabase/server] Faltan variables de entorno:", missingVars);
     throw new Error(
-      "Missing Supabase environment variables. Copy `.env.example` to `.env.local` and set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY.",
+      `Error: Faltan las variables ${missingVars.join(
+        ", ",
+      )} en Vercel. Configúralas en el proyecto y vuelve a desplegar.`,
     );
   }
 

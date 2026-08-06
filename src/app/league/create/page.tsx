@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dices, Sparkles } from "lucide-react";
 import { Button, Card, useToast } from "@/components/ui";
-import { createLeagueInDb, isSupabaseConfigured } from "@/lib/services/survivor-db";
+import { createLeagueInDb } from "@/lib/services/survivor-db";
+import { getSupabaseEnv } from "@/lib/supabase/client";
 import { SEASON_YEAR } from "@/lib/mock-survivor-data";
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -25,7 +26,7 @@ const inputClass =
 
 export default function CreateLeaguePage() {
   const router = useRouter();
-  const { success } = useToast();
+  const { success, error: toastError } = useToast();
 
   const [leagueName, setLeagueName] = useState("");
   const [capacityMode, setCapacityMode] = useState<string>("50");
@@ -77,17 +78,30 @@ export default function CreateLeaguePage() {
       setTimeout(() => {
         router.push(`/league/${leagueId}`);
       }, 1100);
-    } catch {
+    } catch (err) {
       setSubmitting(false);
-      if (isSupabaseConfigured()) {
-        setError(
-          "No se pudo crear la liga. Verifica que Supabase esté configurado y que la base de datos acepte la conexión.",
-        );
-      } else {
-        setError(
-          "Supabase no está configurado. Copia `.env.example` a `.env.local` con tus credenciales.",
-        );
+
+      const message =
+        err instanceof Error && err.message
+          ? err.message
+          : String(err ?? "Error desconocido al crear la liga.");
+
+      // Unmask the exact runtime error in the console for debugging.
+      console.error("[Create League Error]", err);
+
+      // If env vars are missing at runtime, surface which ones are missing.
+      const { missingVars } = getSupabaseEnv();
+      if (missingVars.length > 0) {
+        const envMessage = `Error: Faltan las variables ${missingVars.join(", ")} en Vercel.`;
+        console.error("[Create League Error] Env check:", { missingVars });
+        setError(envMessage);
+        toastError(envMessage);
+        return;
       }
+
+      // Real Supabase error → show the exact message, never a static fallback.
+      setError(message);
+      toastError(message);
     }
   };
 

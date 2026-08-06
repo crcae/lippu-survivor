@@ -19,6 +19,28 @@ export function isSupabaseConfigured(): boolean {
   );
 }
 
+interface SupabaseErrorLike {
+  code?: string | null;
+  message?: string | null;
+  details?: string | null;
+  hint?: string | null;
+}
+
+/**
+ * Logs the full Supabase error (`code`, `message`, `details`) to the console
+ * and rethrows a plain `Error(error.message)` so the UI surfaces the exact
+ * reason instead of a generic "no se pudo" message.
+ */
+function throwSupabaseError(step: string, error: SupabaseErrorLike): never {
+  console.error(`[survivor-db] ${step} falló`, {
+    code: error.code ?? null,
+    message: error.message ?? String(error),
+    details: error.details ?? null,
+    hint: error.hint ?? null,
+  });
+  throw new Error(error.message ?? String(error ?? "Error desconocido en Supabase."));
+}
+
 // ── Database row shapes (snake_case) ────────────────────────────────────────
 
 interface LeagueRow {
@@ -285,8 +307,8 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     const current = mapUser(existing.data.user);
     try {
       await ensureProfileRow(current);
-    } catch {
-      // Best-effort: auth state is still the source of truth for the session.
+    } catch (err) {
+      console.warn("[survivor-db] No se pudo sincronizar el perfil de la sesión:", err);
     }
     return current;
   }
@@ -297,8 +319,8 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     const current = localGuestFrom(existingGuestId);
     try {
       await ensureProfileRow(current);
-    } catch {
-      // Best-effort: the league insert below still carries the guest id.
+    } catch (err) {
+      console.warn("[survivor-db] No se pudo sincronizar el perfil guest existente:", err);
     }
     return current;
   }
@@ -311,8 +333,8 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     const current = mapUser(guest.data.user);
     try {
       await ensureProfileRow(current);
-    } catch {
-      // Best-effort: auth state is still the source of truth for the session.
+    } catch (err) {
+      console.warn("[survivor-db] No se pudo sincronizar el perfil anónimo:", err);
     }
     return current;
   }
@@ -322,8 +344,8 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
   const localGuest = localGuestFrom(guestId);
   try {
     await ensureProfileRow(localGuest);
-  } catch {
-    // Best-effort: the league insert below still carries the guest id.
+  } catch (err) {
+    console.warn("[survivor-db] No se pudo insertar el perfil guest local:", err);
   }
 
   return localGuest;
@@ -338,7 +360,9 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
  * straight to `/league/[id]`.
  *
  * Never throws auth errors for missing sessions: guests fall back to a
- * deterministic local UUID so creation always succeeds.
+ * deterministic local UUID so creation always succeeds. Every Supabase step is
+ * logged (`[survivor-db] ...`) and errors are rethrown with the exact
+ * `message` from Supabase so the UI can display the real cause.
  */
 export async function createLeagueInDb(
   payload: CreateLeaguePayload,
@@ -350,6 +374,7 @@ export async function createLeagueInDb(
     throw new Error("Debes iniciar sesión para crear una liga.");
   }
 
+  console.log("[survivor-db] User profile check/creation...", { userId: user.id, isGuest: user.isGuest ?? false });
   const { error: profileError } = await supabase.from("profiles").upsert(
     {
       id: user.id,
@@ -359,8 +384,9 @@ export async function createLeagueInDb(
     },
     { onConflict: "id", ignoreDuplicates: true },
   );
-  if (profileError) throw profileError;
+  if (profileError) throwSupabaseError("inserción del perfil", profileError);
 
+  console.log("[survivor-db] Inserting league row...", { name: payload.name, inviteCode: payload.inviteCode });
   const { data: league, error: leagueError } = await supabase
     .from("leagues")
     .insert({
@@ -376,15 +402,17 @@ export async function createLeagueInDb(
     })
     .select("id")
     .single();
-  if (leagueError) throw leagueError;
+  if (leagueError) throwSupabaseError("inserción de la liga", leagueError);
 
+  console.log("[survivor-db] Inserting owner entry row...", { leagueId: league.id });
   const { error: entryError } = await supabase.from("entries").insert({
     user_id: user.id,
     league_id: league.id,
     entry_name: `Entrada 1 - ${user.displayName}`,
   });
-  if (entryError) throw entryError;
+  if (entryError) throwSupabaseError("inserción de la entrada del dueño", entryError);
 
+  console.log("[survivor-db] League created", { leagueId: league.id });
   return { leagueId: league.id };
 }
 
