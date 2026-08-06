@@ -5,6 +5,7 @@ import {
   evaluatePendingPicksForSeason,
   syncNflGamesInDb,
 } from "@/lib/services/nfl-sync";
+import { countGamesForWeekInDb } from "@/lib/services/survivor-db";
 
 export const runtime = "nodejs";
 
@@ -49,10 +50,20 @@ export async function GET(request: NextRequest) {
 
   // Persist real ESPN games and evaluate any picks that can now be settled.
   // Both steps are best-effort and never break the scoreboard response.
+  //
+  // Week 18 is protected: when `nfl_games` already has rows for it, the ESPN
+  // sync is skipped so the curated Week 18 slate can never be overwritten.
   if (source === "espn") {
     try {
-      const { synced } = await syncNflGamesInDb(games);
-      console.log(`[nfl-sync] Semana ${week}: ${synced} partidos sincronizados`);
+      const existingWeek18 = week === 18 ? await countGamesForWeekInDb(week) : 0;
+      if (existingWeek18 > 0) {
+        console.log(
+          `[nfl-sync] Semana ${week} protegida: se omitió la sobreescritura de ${existingWeek18} partidos`,
+        );
+      } else {
+        const { synced } = await syncNflGamesInDb(games);
+        console.log(`[nfl-sync] Semana ${week}: ${synced} partidos sincronizados`);
+      }
     } catch (err) {
       console.error("[nfl-sync] No se pudieron sincronizar los partidos:", err);
     }

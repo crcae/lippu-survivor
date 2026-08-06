@@ -138,7 +138,7 @@ function mapEvent(event: EspnEvent, week: number, year: number): NFLGame | null 
   const clock = rawClock !== undefined ? String(rawClock) : undefined;
   const statusDetail = event.status?.type?.shortDetail ?? event.status?.type?.detail;
 
-  let rawDate = event.date;
+  const rawDate = event.date;
   const isInvalidDate = !rawDate || Number.isNaN(new Date(rawDate).getTime());
   const isExplicitTbd = statusDetail?.toUpperCase().includes("TBD") || false;
 

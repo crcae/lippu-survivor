@@ -90,6 +90,7 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
     isDemo ? MOCK_ENTRIES[0].id : "",
   );
   const [selectedTeamId, setSelectedTeamId] = useState<NFLTeamId | null>(null);
+  const [isPickConfirmed, setIsPickConfirmed] = useState(false);
 
   const [games, setGames] = useState<NFLGame[]>([]);
   const [gamesSource, setGamesSource] = useState<SurvivorDataSource>("mock");
@@ -162,6 +163,8 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
 
     // Real league: read from Supabase. The server-side sync (scoreboard route)
     // is fired best-effort so `nfl_games` stays fresh, then we re-read the DB.
+    // Week 18 is protected: it is read straight from `public.nfl_games` and
+    // never triggers an ESPN sync that could overwrite the curated slate.
     getNflGamesInDb(currentWeek, SEASON_YEAR)
       .then((dbGames) => {
         if (cancelled) return;
@@ -177,18 +180,20 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
         if (!cancelled) setGamesLoading(false);
       });
 
-    fetch(
-      `/api/nfl/scoreboard?week=${currentWeek}&year=${SEASON_YEAR}`,
-      { cache: "no-store" },
-    )
-      .catch(() => null)
-      .then(() => getNflGamesInDb(currentWeek, SEASON_YEAR))
-      .then((dbGames) => {
-        if (cancelled) return;
-        setGames(dbGames);
-        setGamesSource("db");
-      })
-      .catch(() => {});
+    if (currentWeek !== 18) {
+      fetch(
+        `/api/nfl/scoreboard?week=${currentWeek}&year=${SEASON_YEAR}`,
+        { cache: "no-store" },
+      )
+        .catch(() => null)
+        .then(() => getNflGamesInDb(currentWeek, SEASON_YEAR))
+        .then((dbGames) => {
+          if (cancelled) return;
+          setGames(dbGames);
+          setGamesSource("db");
+        })
+        .catch(() => {});
+    }
 
     return () => {
       cancelled = true;
@@ -213,6 +218,16 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
 
       // Trigger the server-side ESPN sync (updates nfl_games + evaluates picks)
       // then re-read the DB — the displayed games always come from Supabase.
+      // Week 18 is protected and never re-synced from ESPN.
+      if (currentWeek === 18) {
+        getNflGamesInDb(currentWeek, SEASON_YEAR)
+          .then((dbGames) => {
+            setGames(dbGames);
+            setGamesSource("db");
+          })
+          .catch(() => {});
+        return;
+      }
       fetch(
         `/api/nfl/scoreboard?week=${currentWeek}&year=${SEASON_YEAR}`,
         { cache: "no-store" },
@@ -381,18 +396,35 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
       ? { teamId: pickTeamId, game: gameByTeam[pickTeamId] }
       : null;
 
-  const isPickConfirmed = selectedTeamId === null && confirmedPickId !== null;
-
   const pendingPick: { team: NFLTeam; game: NFLGame } | null =
     pendingPickTeamId !== null && gameByTeam[pendingPickTeamId] !== undefined
       ? { team: getTeam(pendingPickTeamId), game: gameByTeam[pendingPickTeamId] }
       : null;
 
+  // Keep the pick UI in sync with the saved picks whenever the active week,
+  // entry or DB picks change. A confirmed pick must stay confirmed (never
+  // reverting to "sin confirmar") after navigating away and back to a week.
+  useEffect(() => {
+    const sync = setTimeout(() => {
+      const existingPick = isReal
+        ? dbPicksByEntry[activeEntryId]?.[currentWeek] ?? null
+        : getPickForWeek(currentWeek);
+
+      if (existingPick !== null) {
+        setSelectedTeamId(existingPick);
+        setIsPickConfirmed(true);
+      } else {
+        setSelectedTeamId(null);
+        setIsPickConfirmed(false);
+      }
+    }, 0);
+    return () => clearTimeout(sync);
+  }, [currentWeek, activeEntryId, isReal, dbPicksByEntry, getPickForWeek]);
+
   const handleWeekChange = (week: number) => {
     setGamesLoading(true);
     setGames([]);
     setCurrentWeek(week);
-    setSelectedTeamId(getPickForWeek(week));
   };
 
   const handleSelectTeam = (teamId: NFLTeamId) => {
@@ -443,6 +475,7 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
     }
 
     confirmPick(week, teamId);
+    setIsPickConfirmed(true);
     setSelectedTeamId(null);
     setPendingPickTeamId(null);
     setIsPickModalOpen(false);

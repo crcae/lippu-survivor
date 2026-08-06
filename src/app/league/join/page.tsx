@@ -53,37 +53,41 @@ export default function JoinLeaguePage() {
   // Live lookup on Supabase leagues table by invite_code
   useEffect(() => {
     if (tab !== "invite") return;
-    if (value.length < 6) {
-      setValidatedLeague(null);
-      setError(null);
-      return;
-    }
 
     let cancelled = false;
-    setValidating(true);
-    setError(null);
+    const run = setTimeout(() => {
+      if (value.length < 6) {
+        setValidatedLeague(null);
+        setError(null);
+        return;
+      }
 
-    getLeagueByInviteCode(value)
-      .then((lookup) => {
-        if (cancelled) return;
-        setValidating(false);
-        if (lookup) {
-          setValidatedLeague(lookup);
-          setError(null);
-        } else {
+      setValidating(true);
+      setError(null);
+
+      getLeagueByInviteCode(value)
+        .then((lookup) => {
+          if (cancelled) return;
+          setValidating(false);
+          if (lookup) {
+            setValidatedLeague(lookup);
+            setError(null);
+          } else {
+            setValidatedLeague(null);
+            setError("Código de invitación no encontrado");
+          }
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setValidating(false);
           setValidatedLeague(null);
           setError("Código de invitación no encontrado");
-        }
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setValidating(false);
-        setValidatedLeague(null);
-        setError("Código de invitación no encontrado");
-      });
+        });
+    }, 0);
 
     return () => {
       cancelled = true;
+      clearTimeout(run);
     };
   }, [value, tab]);
 
