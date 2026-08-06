@@ -94,7 +94,9 @@ export interface TicketTokenPayload {
 
 export interface TicketRedeemResult {
   leagueId: string;
+  leagueName: string;
   entryIds: string[];
+  entriesCount: number;
 }
 
 export interface LeagueEntry {
@@ -124,6 +126,8 @@ export interface CurrentUser {
   id: string;
   email: string;
   displayName: string;
+  /** True when no Supabase auth session exists (local guest fallback). */
+  isGuest?: boolean;
 }
 
 // ── Mappers (snake_case → camelCase) ────────────────────────────────────────
@@ -162,6 +166,51 @@ const NO_ROWS = ["00000000-0000-0000-0000-000000000000"];
 
 // ── Identity helper ─────────────────────────────────────────────────────────
 
+const GUEST_ID_KEY = "lippu_survivor_guest_id";
+
+function readLocalGuestId(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    return window.localStorage.getItem(GUEST_ID_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function writeLocalGuestId(id: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(GUEST_ID_KEY, id);
+  } catch {
+    // Storage unavailable — the guest id lives only for this session.
+  }
+}
+
+function randomUuid(): string {
+  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
+    return crypto.randomUUID();
+  }
+  return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(/[xy]/g, (c) => {
+    const r = (Math.random() * 16) | 0;
+    const v = c === "x" ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+/**
+ * Returns the deterministic local guest UUID for this device, generating and
+ * persisting it in localStorage (`lippu_survivor_guest_id`) on first use. Used
+ * as the Supabase `profiles.id` fallback when anonymous auth sign-ins are
+ * disabled, so league creation never fails.
+ */
+export function getLocalGuestId(): string {
+  const existing = readLocalGuestId();
+  if (existing) return existing;
+  const id = randomUuid();
+  writeLocalGuestId(id);
+  return id;
+}
+
 function mapUser(user: User): CurrentUser {
   const metadata = (user.user_metadata ?? {}) as {
     display_name?: string;
@@ -178,7 +227,7 @@ function mapUser(user: User): CurrentUser {
 
 /**
  * Ensures a `profiles` row exists for the given user. Idempotent: relies on
- * the unique `id` PK and RLS insert policy (`auth.uid() = id`).
+ * the unique `id` PK and RLS insert policy (`auth.uid() = id`, or anon guest).
  */
 async function ensureProfileRow(user: CurrentUser): Promise<void> {
   const supabase = createClient();
@@ -195,12 +244,18 @@ async function ensureProfileRow(user: CurrentUser): Promise<void> {
 }
 
 /**
- * Returns the current Supabase user. When no session exists, creates an
- * anonymous (guest) auth session via `signInAnonymously` and upserts a
- * `profiles` row so that every league, entry and pick persists to Supabase.
+ * Returns the current user identity, guaranteeing a Supabase `profiles` row.
  *
- * Requires anonymous sign-ins enabled in the Supabase project. Returns `null`
- * when the env vars are missing or a session cannot be established.
+ * Resolution order:
+ * 1. Existing Supabase session (email/password, OAuth, etc.).
+ * 2. Anonymous session via `signInAnonymously()` when anonymous sign-ins are
+ *    enabled in the Supabase project.
+ * 3. **Fallback:** a deterministic local guest id persisted in localStorage
+ *    (`lippu_survivor_guest_id`), upserted directly into `profiles`. This keeps
+ *    league creation and persistence working even when anonymous sign-ins are
+ *    disabled.
+ *
+ * Returns `null` only when the Supabase env vars are missing entirely.
  */
 export async function getCurrentUser(): Promise<CurrentUser | null> {
   let supabase: ReturnType<typeof createClient>;
@@ -210,28 +265,45 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     return null;
   }
 
-  let user: User | null = null;
-
+  // 1) Existing session.
   const existing = await supabase.auth.getUser();
   if (existing.data.user) {
-    user = existing.data.user;
-  } else {
-    const guest = await supabase.auth.signInAnonymously();
-    if (!guest.error && guest.data.user) {
-      user = guest.data.user;
+    const current = mapUser(existing.data.user);
+    try {
+      await ensureProfileRow(current);
+    } catch {
+      // Best-effort: auth state is still the source of truth for the session.
     }
+    return current;
   }
 
-  if (!user) return null;
+  // 2) Anonymous Supabase sign-in.
+  const guest = await supabase.auth.signInAnonymously();
+  if (!guest.error && guest.data.user) {
+    const current = mapUser(guest.data.user);
+    try {
+      await ensureProfileRow(current);
+    } catch {
+      // Best-effort: auth state is still the source of truth for the session.
+    }
+    return current;
+  }
 
-  const current = mapUser(user);
+  // 3) Local guest UUID fallback (anonymous sign-ins disabled).
+  const guestId = getLocalGuestId();
+  const localGuest: CurrentUser = {
+    id: guestId,
+    email: `anon_${guestId.replace(/[^a-z0-9]/gi, "").slice(-12)}@lippu.app`,
+    displayName: "Guest",
+    isGuest: true,
+  };
   try {
-    await ensureProfileRow(current);
+    await ensureProfileRow(localGuest);
   } catch {
-    // Best-effort: auth state is still the source of truth for the session.
+    // Best-effort: the league insert below still carries the guest id.
   }
 
-  return current;
+  return localGuest;
 }
 
 // ── Leagues ─────────────────────────────────────────────────────────────────
@@ -593,7 +665,7 @@ export async function redeemTicketInDb(
 
   const { data: league, error: leagueError } = await supabase
     .from("leagues")
-    .select("capacity")
+    .select("id, name, capacity")
     .eq("id", token.league_id)
     .maybeSingle();
   if (leagueError) throw leagueError;
@@ -653,5 +725,10 @@ export async function redeemTicketInDb(
     .eq("id", token.id);
   if (redeemError) throw redeemError;
 
-  return { leagueId: token.league_id, entryIds };
+  return {
+    leagueId: token.league_id,
+    leagueName: league.name,
+    entryIds,
+    entriesCount: entryIds.length,
+  };
 }

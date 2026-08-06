@@ -11,6 +11,7 @@ import {
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/client";
+import { getLocalGuestId } from "@/lib/services/survivor-db";
 
 export interface AuthProfile {
   id: string;
@@ -79,8 +80,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setProfile(nextUser ? mapUserToProfile(nextUser) : null);
     };
 
-    const upsertProfile = async (nextUser: User) => {
-      const nextProfile = mapUserToProfile(nextUser);
+    const upsertProfile = async (nextProfile: AuthProfile) => {
       try {
         await supabase.from("profiles").upsert(
           {
@@ -103,15 +103,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (disposed) return;
       if (!error && data.user) {
         sync(data.user);
-        void upsertProfile(data.user);
+        void upsertProfile(mapUserToProfile(data.user));
+        return;
       }
+
+      // Fallback: anonymous sign-ins disabled → deterministic local guest UUID
+      // (same one used by the service layer) so league creation never fails.
+      const guestId = getLocalGuestId();
+      if (disposed) return;
+      const guestProfile: AuthProfile = {
+        id: guestId,
+        email: `anon_${guestId.replace(/[^a-z0-9]/gi, "").slice(-12)}@lippu.app`,
+        displayName: "Guest",
+        avatarUrl: null,
+      };
+      setProfile(guestProfile);
+      void upsertProfile(guestProfile);
     };
 
     supabase.auth.getUser().then(({ data }) => {
       if (disposed) return;
       if (data.user) {
         sync(data.user);
-        void upsertProfile(data.user);
+        void upsertProfile(mapUserToProfile(data.user));
       } else {
         void ensureGuest();
       }
@@ -126,7 +140,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false);
 
       if (!nextUser) return;
-      void upsertProfile(nextUser);
+      void upsertProfile(mapUserToProfile(nextUser));
     });
 
     return () => {

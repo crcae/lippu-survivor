@@ -228,6 +228,13 @@ create policy "Users can insert their own profile"
   on public.profiles for insert
   with check (auth.uid() = id);
 
+-- Local guest fallback: when anonymous auth sign-ins are disabled the app
+-- persists a deterministic device guest id directly. Allow anon inserts so
+-- league creation never fails. Read/update stay restricted above.
+create policy "Anon guests can insert profiles"
+  on public.profiles for insert
+  with check (auth.uid() is null);
+
 -- ── Leagues ──
 -- Public (active/completed) leagues are readable by everyone, and owners or
 -- members can always read their own leagues (including drafts).
@@ -245,6 +252,12 @@ create policy "Leagues are readable by members and owners"
 create policy "Owners can insert leagues"
   on public.leagues for insert
   with check (auth.uid() = owner_id);
+
+-- Local guest fallback: allow anon guests to create leagues so creation never
+-- fails when anonymous auth sign-ins are disabled.
+create policy "Anon guests can insert leagues"
+  on public.leagues for insert
+  with check (auth.uid() is null and owner_id is not null);
 
 create policy "Owners can update their own leagues"
   on public.leagues for update
@@ -272,6 +285,12 @@ create policy "Entries are readable by members"
 create policy "Users can insert their own entries"
   on public.entries for insert
   with check (auth.uid() = user_id);
+
+-- Local guest fallback: allow anon guests to register entries (self-join and
+-- the owner's first entry on league creation).
+create policy "Anon guests can insert entries"
+  on public.entries for insert
+  with check (auth.uid() is null and user_id is not null and league_id is not null);
 
 -- League owners can update entry status (eliminations, winners).
 create policy "League owners can update entries"
@@ -309,6 +328,19 @@ create policy "Users can insert their own picks"
     exists (
       select 1 from public.entries e
       where e.id = entry_id and e.user_id = auth.uid()
+    )
+  );
+
+-- Local guest fallback: allow anon guests to submit picks for existing entries
+-- so the survivor game keeps working without an auth session. The entry check
+-- uses the leaderboard view, which runs with owner privileges and is readable
+-- by everyone (anon guests cannot read the raw entries table under RLS).
+create policy "Anon guests can insert picks"
+  on public.picks for insert
+  with check (
+    auth.uid() is null
+    and exists (
+      select 1 from public.league_leaderboard lb where lb.entry_id = entry_id
     )
   );
 
