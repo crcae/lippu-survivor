@@ -194,6 +194,7 @@ const P = (
   pickHistory: (NFLTeamId | null)[],
 ): LeaderboardParticipant => ({
   id,
+  userId: id,
   name,
   entryName,
   status,

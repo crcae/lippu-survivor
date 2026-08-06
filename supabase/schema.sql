@@ -292,6 +292,13 @@ create policy "Anon guests can insert entries"
   on public.entries for insert
   with check (auth.uid() is null and user_id is not null and league_id is not null);
 
+-- Local guest fallback: anon guests need to read their own entries to hydrate
+-- the dashboard (active entry, entry name). Entries data is already exposed
+-- publicly through the `league_leaderboard` view, so this stays consistent.
+create policy "Anon guests can read entries"
+  on public.entries for select
+  using (auth.uid() is null);
+
 -- League owners can update entry status (eliminations, winners).
 create policy "League owners can update entries"
   on public.entries for update
@@ -318,6 +325,17 @@ create policy "League members can read picks"
             select user_id from public.entries where league_id = l.id
           )
         )
+    )
+  );
+
+-- Local guest fallback: anon guests read picks (pick history / re-hydration).
+-- Scoped to entries that exist, consistent with the leaderboard view.
+create policy "Anon guests can read picks"
+  on public.picks for select
+  using (
+    auth.uid() is null
+    and exists (
+      select 1 from public.league_leaderboard lb where lb.entry_id = entry_id
     )
   );
 

@@ -99,7 +99,7 @@ export interface CreateLeaguePayload {
   seasonYear: number;
   /** Defaults to `null` (unlimited) when omitted. */
   capacity?: number | null;
-  /** Defaults to `20` (one per purchased ticket) when omitted. */
+  /** Defaults to `100` (a generous safe limit for guest leagues) when omitted. */
   maxEntriesPerUser?: number;
   strikesAllowed: number;
   /** Defaults to `0` (monetization happens on Lippu.app) when omitted. */
@@ -393,7 +393,7 @@ export async function createLeagueInDb(
       name: payload.name,
       owner_id: user.id,
       season_year: payload.seasonYear,
-      max_entries_per_user: payload.maxEntriesPerUser ?? 20,
+      max_entries_per_user: payload.maxEntriesPerUser ?? 100,
       capacity: payload.capacity ?? null,
       strikes_allowed: payload.strikesAllowed,
       entry_fee: payload.entryFee ?? 0,
@@ -519,28 +519,38 @@ export async function joinLeagueInDb(
 // ── Dashboard ───────────────────────────────────────────────────────────────
 
 /**
- * Loads everything the league dashboard needs: league details, the
- * leaderboard (with pick history), the current user's entries and their picks.
+ * Loads a single league from Supabase. Returns `null` when the league does not
+ * exist. Never returns mock data — the caller decides how to render a missing
+ * league.
  */
-export async function getLeagueDashboardData(
+export async function getLeagueDetailsInDb(
   leagueId: string,
-): Promise<LeagueDashboardData> {
+): Promise<League | null> {
   const supabase = createClient();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const userId = user?.id ?? null;
-
-  const { data: leagueRow, error: leagueError } = await supabase
+  const { data: leagueRow, error } = await supabase
     .from("leagues")
     .select("*")
     .eq("id", leagueId)
     .maybeSingle();
-  if (leagueError) throw leagueError;
-  if (!leagueRow) {
-    return { league: null, userEntries: [], leaderboard: [], picksByEntry: {} };
-  }
+  if (error) throw error;
+
+  return leagueRow ? mapLeague(leagueRow) : null;
+}
+
+/**
+ * Loads the real leaderboard for a league — aggregated strictly from
+ * `public.entries` (via the `league_leaderboard` view) plus each entry's
+ * pick history from `public.picks`. Never injects mock participants or
+ * pre-filled picks.
+ */
+export async function getLeagueLeaderboardInDb(
+  leagueId: string,
+): Promise<{
+  leaderboard: LeaderboardParticipant[];
+  picksByEntry: Record<string, WeekPicks>;
+}> {
+  const supabase = createClient();
 
   const { data: lbRows, error: lbError } = (await supabase
     .from("league_leaderboard")
@@ -570,8 +580,18 @@ export async function getLeagueDashboardData(
     (profileRows ?? []).map((row) => [row.id, row.display_name]),
   );
 
-  const picksByEntry: Record<string, WeekPicks> = {};
   const allPickRows = pickRows ?? [];
+
+  const picksByEntry: Record<string, WeekPicks> = {};
+  for (const row of lbRows ?? []) {
+    const map: WeekPicks = {};
+    for (const pick of allPickRows) {
+      if (pick.entry_id === row.entry_id) {
+        map[pick.week] = pick.team_id as NFLTeamId;
+      }
+    }
+    picksByEntry[row.entry_id] = map;
+  }
 
   const leaderboard: LeaderboardParticipant[] = (lbRows ?? []).map((row) => {
     const entryPicks = allPickRows.filter((p) => p.entry_id === row.entry_id);
@@ -585,6 +605,7 @@ export async function getLeagueDashboardData(
 
     return {
       id: row.entry_id,
+      userId: row.user_id,
       name: displayNameById.get(row.user_id) ?? "Jugador",
       entryName: row.entry_name,
       status: row.status,
@@ -593,32 +614,69 @@ export async function getLeagueDashboardData(
     };
   });
 
-  let userEntries: LeagueEntry[] = [];
+  return { leaderboard, picksByEntry };
+}
 
-  if (userId) {
-    const { data: myEntries } = await supabase
+/**
+ * Loads everything the league dashboard needs: league details, the real
+ * leaderboard (with pick history), the current user's entries and their picks.
+ *
+ * Only real Supabase rows are returned — mock data is never injected. When the
+ * league does not exist, `league` is `null`; when auxiliary queries fail they
+ * degrade to empty lists so a valid league still renders instead of falling
+ * back to demo data.
+ */
+export async function getLeagueDashboardData(
+  leagueId: string,
+): Promise<LeagueDashboardData> {
+  const supabase = createClient();
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  // Guests without an auth session persist under their deterministic local
+  // UUID, which is also stored in `profiles.id` / `entries.user_id`.
+  const userId = user?.id ?? getLocalGuestId();
+
+  // 1) League — a missing league is a clean "not found", never mock.
+  const { data: leagueRow, error: leagueError } = await supabase
+    .from("leagues")
+    .select("*")
+    .eq("id", leagueId)
+    .maybeSingle();
+  if (leagueError) throw leagueError;
+  if (!leagueRow) {
+    return { league: null, userEntries: [], leaderboard: [], picksByEntry: {} };
+  }
+
+  const league = mapLeague(leagueRow);
+
+  // 2) Leaderboard + picks — failures degrade to empty, never to mock.
+  let leaderboard: LeaderboardParticipant[] = [];
+  let picksByEntry: Record<string, WeekPicks> = {};
+  try {
+    const lb = await getLeagueLeaderboardInDb(leagueId);
+    leaderboard = lb.leaderboard;
+    picksByEntry = lb.picksByEntry;
+  } catch (err) {
+    console.warn("[survivor-db] No se pudo cargar la clasificación:", err);
+  }
+
+  // 3) The current user's entries — only real rows from `public.entries`.
+  let userEntries: LeagueEntry[] = [];
+  try {
+    const { data: myEntries, error: myEntriesError } = await supabase
       .from("entries")
       .select("*")
       .eq("league_id", leagueId)
       .eq("user_id", userId);
+    if (myEntriesError) throw myEntriesError;
     userEntries = (myEntries ?? []).map(mapLeagueEntry);
-
-    for (const entry of userEntries) {
-      const entryPicks = allPickRows.filter((p) => p.entry_id === entry.id);
-      const map: WeekPicks = {};
-      for (const pick of entryPicks) {
-        map[pick.week] = pick.team_id as NFLTeamId;
-      }
-      picksByEntry[entry.id] = map;
-    }
+  } catch (err) {
+    console.warn("[survivor-db] No se pudieron cargar tus entradas:", err);
   }
 
-  return {
-    league: mapLeague(leagueRow),
-    userEntries,
-    leaderboard,
-    picksByEntry,
-  };
+  return { league, userEntries, leaderboard, picksByEntry };
 }
 
 // ── Picks ───────────────────────────────────────────────────────────────────

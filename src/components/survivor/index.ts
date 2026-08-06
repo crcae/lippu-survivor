@@ -21,6 +21,9 @@ export type { CurrentPickBadgeProps } from "./CurrentPickBadge";
 export { LeaderboardTable } from "./LeaderboardTable";
 export type { LeaderboardTableProps } from "./LeaderboardTable";
 
+export { CommissionerPanel } from "./CommissionerPanel";
+export type { CommissionerPanelProps } from "./CommissionerPanel";
+
 export { TeamMark } from "./TeamMark";
 export type { TeamMarkProps, TeamMarkSize } from "./TeamMark";
 

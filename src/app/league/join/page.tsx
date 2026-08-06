@@ -136,6 +136,20 @@ export default function JoinLeaguePage() {
     return () => clearTimeout(autoRedeem);
   }, [redeemTicket]);
 
+  // Pre-select the invite tab and pre-fill the code when arriving via an
+  // invitation link copied from the commissioner panel (?invite=CODE).
+  useEffect(() => {
+    const invite = new URLSearchParams(window.location.search).get("invite");
+    if (!invite) return;
+
+    const prefill = setTimeout(() => {
+      setTab("invite");
+      setCode(invite.toUpperCase());
+    }, 0);
+
+    return () => clearTimeout(prefill);
+  }, []);
+
   const handleSubmit = async () => {
     if (!canSubmit) {
       setError("Ingresa un código de invitación válido de 6 caracteres.");

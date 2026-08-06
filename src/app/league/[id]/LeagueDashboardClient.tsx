@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Sparkles } from "lucide-react";
+import Link from "next/link";
+import { SearchX, Sparkles } from "lucide-react";
 
 import { useToast } from "@/components/ui";
 import {
@@ -9,6 +10,7 @@ import {
   type MobileNavTab,
 } from "@/components/layout/MobileNav";
 import {
+  CommissionerPanel,
   CurrentPickBadge,
   LeagueHeader,
   LeagueRulesModal,
@@ -30,8 +32,10 @@ import {
   getTeam,
 } from "@/lib/mock-survivor-data";
 import {
+  getCurrentUser,
   getLeagueDashboardData,
   savePickInDb,
+  type CurrentUser,
   type LeagueEntry,
 } from "@/lib/services/survivor-db";
 import type {
@@ -78,8 +82,12 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
   const { success, error: toastError } = useToast();
 
   const [now, setNow] = useState<number | null>(null);
-  const [currentWeek, setCurrentWeek] = useState<number>(ACTIVE_WEEK);
-  const [activeEntryId, setActiveEntryId] = useState<string>(MOCK_ENTRIES[0].id);
+  const [currentWeek, setCurrentWeek] = useState<number>(
+    isDemo ? ACTIVE_WEEK : 1,
+  );
+  const [activeEntryId, setActiveEntryId] = useState<string>(
+    isDemo ? MOCK_ENTRIES[0].id : "",
+  );
   const [selectedTeamId, setSelectedTeamId] = useState<NFLTeamId | null>(null);
 
   const [games, setGames] = useState<NFLGame[]>([]);
@@ -98,6 +106,7 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
   const [dbPicksByEntry, setDbPicksByEntry] = useState<Record<string, WeekPicks>>(
     {},
   );
+  const [currentUser, setCurrentUser] = useState<CurrentUser | null>(null);
 
   const [isPickModalOpen, setIsPickModalOpen] = useState(false);
   const [pendingPickTeamId, setPendingPickTeamId] = useState<NFLTeamId | null>(
@@ -183,7 +192,18 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
       setDbUserEntries([]);
       setDbLeaderboard([]);
       setDbPicksByEntry({});
+      setCurrentUser(null);
     }, 0);
+
+    // Resolve the current identity (auth session or local guest UUID) so the
+    // dashboard can tell whether the viewer is the league owner.
+    getCurrentUser()
+      .then((user) => {
+        if (!cancelled) setCurrentUser(user);
+      })
+      .catch(() => {
+        if (!cancelled) setCurrentUser(null);
+      });
 
     getLeagueDashboardData(leagueId)
       .then((data) => {
@@ -218,6 +238,13 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
 
   // ── Hybrid data: real league (Supabase) vs demo (mock + localStorage) ──
   const isReal = !isDemo && dbLeague !== null;
+
+  // The current viewer is the commissioner when they own the league.
+  const isOwner =
+    isReal &&
+    dbLeague !== null &&
+    currentUser !== null &&
+    currentUser.id === dbLeague.ownerId;
 
   const headerEntries: LeagueEntryOption[] = isReal
     ? dbUserEntries.map((entry) => ({ id: entry.id, name: entry.entryName }))
@@ -388,6 +415,41 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
     );
   }
 
+  // A real (non-demo) league that isn't in Supabase → clean "not found" state,
+  // never a mock dashboard with fake picks/participants.
+  if (!isDemo && dbLoadState === "none") {
+    return (
+      <main className="max-w-3xl mx-auto px-4 sm:px-6 py-16 text-center space-y-6">
+        <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-surface-elevated border border-border mx-auto">
+          <SearchX className="w-8 h-8 text-text-secondary" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold text-text-primary">
+            Liga no encontrada
+          </h1>
+          <p className="text-text-secondary mt-2">
+            No encontramos una liga con este identificador, o el enlace es
+            inválido.
+          </p>
+        </div>
+        <div className="flex flex-col sm:flex-row gap-3 justify-center">
+          <Link
+            href="/league/create"
+            className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-primary text-white font-semibold hover:bg-primary-hover transition-all duration-200 shadow-glow"
+          >
+            Crear una liga
+          </Link>
+          <Link
+            href="/league/join"
+            className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl border border-accent/40 text-accent font-semibold hover:bg-accent/10 transition-all duration-200"
+          >
+            Unirse con código
+          </Link>
+        </div>
+      </main>
+    );
+  }
+
   return (
     <div className="min-h-screen flex flex-col">
       {/* Background ambient effects */}
@@ -414,6 +476,16 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
 
       {/* Content */}
       <main className="relative z-10 flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 pt-8 pb-28 md:pb-8 space-y-8">
+        {isOwner && dbLeague && (
+          <CommissionerPanel
+            inviteCode={dbLeague.inviteCode}
+            entryCount={dbLeaderboard.length}
+            capacity={dbLeague.capacity}
+            maxEntriesPerUser={dbLeague.maxEntries}
+            leagueStatus={dbLeague.status}
+          />
+        )}
+
         <LeagueHeader
           leagueName={
             isReal && dbLeague ? dbLeague.name : MOCK_LEAGUE.name
@@ -464,6 +536,7 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
           <LeaderboardTable
             participants={isReal ? dbLeaderboard : MOCK_PARTICIPANTS}
             highlightEntryId={isReal ? activeEntryId : "u-matias"}
+            ownerUserId={isOwner ? currentUser?.id : undefined}
           />
         </div>
       </main>

@@ -32,6 +32,8 @@ export interface LeagueStats {
 
 export interface LeaderboardParticipant {
   id: string;
+  /** Owner (`user_id`) of the entry — used to mark the commissioner. */
+  userId: string;
   name: string;
   entryName: string;
   status: EntryStatus;

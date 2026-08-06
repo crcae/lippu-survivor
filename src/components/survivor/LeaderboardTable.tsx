@@ -8,6 +8,8 @@ import type { LeaderboardParticipant } from "@/types";
 interface LeaderboardTableProps {
   participants: LeaderboardParticipant[];
   highlightEntryId?: string;
+  /** The `user_id` of the league owner; their entries get the 👑 badge. */
+  ownerUserId?: string;
 }
 
 const rankStyles = [
@@ -33,6 +35,7 @@ function RankBadge({ rank }: { rank: number }) {
 export function LeaderboardTable({
   participants,
   highlightEntryId,
+  ownerUserId,
 }: LeaderboardTableProps) {
   return (
     <div className="rounded-2xl border border-border bg-surface/70 backdrop-blur-sm overflow-hidden">
@@ -79,6 +82,11 @@ export function LeaderboardTable({
                     <div className="flex flex-col">
                       <span className="font-semibold text-text-primary">
                         {participant.name}
+                        {participant.userId === ownerUserId && (
+                          <span className="ml-2 inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full border border-warning/40 bg-warning/10 text-warning text-[10px] font-semibold uppercase">
+                            👑 Comisionado
+                          </span>
+                        )}
                         {isHighlighted && (
                           <span className="ml-2 text-[10px] font-bold text-accent uppercase">
                             Tú
