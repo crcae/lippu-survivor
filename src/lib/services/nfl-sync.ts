@@ -86,14 +86,35 @@ export async function syncNflGamesInDb(
     },
   );
 
-  const { data, error } = await supabase
-    .from("nfl_games")
-    .upsert(rows, { onConflict: "id" })
-    .select("id");
+  try {
+    const { data, error } = await supabase
+      .from("nfl_games")
+      .upsert(rows, {
+        onConflict: "season_year,week,home_team_id,away_team_id",
+      })
+      .select("id");
 
-  if (error) throw error;
+    if (error) {
+      console.warn(
+        "[nfl-sync] Composite key upsert warning, retrying on id:",
+        error.message,
+      );
+      const { data: fallbackData, error: fallbackError } = await supabase
+        .from("nfl_games")
+        .upsert(rows, { onConflict: "id" })
+        .select("id");
+      if (fallbackError) {
+        console.error("[nfl-sync] Fallback upsert failed:", fallbackError);
+        return { synced: 0 };
+      }
+      return { synced: fallbackData?.length ?? 0 };
+    }
 
-  return { synced: data?.length ?? 0 };
+    return { synced: data?.length ?? 0 };
+  } catch (err) {
+    console.error("[nfl-sync] Error in syncNflGamesInDb:", err);
+    return { synced: 0 };
+  }
 }
 
 /**
