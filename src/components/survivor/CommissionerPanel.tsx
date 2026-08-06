@@ -118,11 +118,8 @@ export function CommissionerPanel({
               {copied ? "¡Copiado!" : "Copiar Enlace"}
             </Button>
           </div>
-          <p className="mt-2 text-xs text-text-secondary break-all">
-            Comparte:{" "}
-            <span className="font-mono text-accent">
-              /league/join?invite={inviteCode}
-            </span>
+          <p className="mt-2 text-xs text-text-secondary">
+            Invita a tus amigos compartiendo el código o enlace directo.
           </p>
         </div>
 

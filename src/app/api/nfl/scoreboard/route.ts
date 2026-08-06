@@ -1,16 +1,26 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { fetchNflGames } from "@/lib/espn";
 import { SEASON_YEAR } from "@/lib/mock-survivor-data";
+import {
+  evaluatePendingPicksForSeason,
+  syncNflGamesInDb,
+} from "@/lib/services/nfl-sync";
 
 export const runtime = "nodejs";
 
 /**
  * GET /api/nfl/scoreboard?week=X&year=2026
- * Returns parsed NFL games for a week, served from ESPN with a
- * fallback to mock data. HTTP caching keeps upstream rate limits low.
+ * Returns parsed NFL games for a week, served from ESPN with a fallback to
+ * mock data. HTTP caching keeps upstream rate limits low.
  *
- * The season is locked to 2026 (SEASON_YEAR): any other `year` is rejected
- * so the app always reflects the current Lippu Survivor season.
+ * When the games come from ESPN they are also persisted into `public.nfl_games`
+ * (upsert on the ESPN event id) so pick lockouts and the automated evaluator
+ * always read real data. The persisted games then feed
+ * `evaluatePendingPicksForSeason`, which settles `pending` picks whose games
+ * are final (win/loss/push) and eliminates entries that ran out of strikes.
+ *
+ * The season is locked to 2026 (SEASON_YEAR): any other `year` is rejected so
+ * the app always reflects the current Lippu Survivor season.
  */
 export async function GET(request: NextRequest) {
   const { searchParams } = request.nextUrl;
@@ -36,6 +46,28 @@ export async function GET(request: NextRequest) {
   }
 
   const { games, source } = await fetchNflGames(week, year);
+
+  // Persist real ESPN games and evaluate any picks that can now be settled.
+  // Both steps are best-effort and never break the scoreboard response.
+  if (source === "espn") {
+    try {
+      const { synced } = await syncNflGamesInDb(games);
+      console.log(`[nfl-sync] Semana ${week}: ${synced} partidos sincronizados`);
+    } catch (err) {
+      console.error("[nfl-sync] No se pudieron sincronizar los partidos:", err);
+    }
+
+    try {
+      const { evaluated, eliminated } = await evaluatePendingPicksForSeason(week);
+      if (evaluated > 0) {
+        console.log(
+          `[nfl-sync] Evaluados ${evaluated} picks · ${eliminated} eliminaciones`,
+        );
+      }
+    } catch (err) {
+      console.error("[nfl-sync] No se pudo evaluar la semana:", err);
+    }
+  }
 
   return NextResponse.json(
     { week, year, games, source },

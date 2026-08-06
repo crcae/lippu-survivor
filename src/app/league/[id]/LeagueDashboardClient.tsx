@@ -34,7 +34,7 @@ import {
 import {
   getCurrentUser,
   getLeagueDashboardData,
-  savePickInDb,
+  submitPickInDb,
   type CurrentUser,
   type LeagueEntry,
 } from "@/lib/services/survivor-db";
@@ -350,15 +350,27 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
     if (isReal) {
       if (!activeEntryId) return;
       try {
-        await savePickInDb(activeEntryId, week, teamId);
-      } catch {
-        toastError("No se pudo guardar tu pick. Intenta de nuevo.");
+        // Persist to Supabase enforcing the lock + team rules.
+        await submitPickInDb(activeEntryId, week, teamId);
+      } catch (err) {
+        toastError(
+          err instanceof Error
+            ? err.message
+            : "No se pudo guardar tu pick. Intenta de nuevo.",
+        );
         return;
       }
+      // Reflect the new pick locally so pick history updates immediately.
+      setDbPicksByEntry((prev) => ({
+        ...prev,
+        [activeEntryId]: { ...(prev[activeEntryId] ?? {}), [week]: teamId },
+      }));
+      success("¡Selección guardada con éxito!");
+    } else {
+      success("¡Pick confirmado para la semana " + week + "!");
     }
 
     confirmPick(week, teamId);
-    success("¡Pick confirmado para la semana " + week + "!");
     setSelectedTeamId(null);
     setPendingPickTeamId(null);
     setIsPickModalOpen(false);

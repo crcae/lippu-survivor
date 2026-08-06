@@ -8,6 +8,7 @@
 
 import type { GameStatus, NFLGame, NFLTeamId } from "@/types";
 import {
+  ACTIVE_WEEK,
   NFL_TEAMS,
   SEASON_YEAR,
   generateSchedule,
@@ -156,7 +157,20 @@ export function parseEspnScoreboard(
 
 /** Build mock `NFLGame[]` for a week from our deterministic schedule. */
 export function buildMockGames(week: number, year = SEASON_YEAR): NFLGame[] {
-  const schedule = generateSchedule(Date.now());
+  const DAY_MS = 86_400_000;
+  const HOUR_MS = 3_600_000;
+
+  // Weeks before the simulated active window would otherwise anchor in the
+  // past (every kickoff already passed → fully locked slate). Re-anchor them
+  // just ahead of "now" so the fallback still offers all 32 teams selectable —
+  // that is what a fresh real league (default Week 1) sees until ESPN serves
+  // real schedule data.
+  const anchor =
+    week < ACTIVE_WEEK
+      ? Date.now() + (ACTIVE_WEEK - week) * 7 * DAY_MS + 65 * HOUR_MS
+      : Date.now();
+
+  const schedule = generateSchedule(anchor);
   const matchups = schedule[week] ?? [];
 
   return matchups

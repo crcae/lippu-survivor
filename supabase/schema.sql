@@ -362,6 +362,18 @@ create policy "Anon guests can insert picks"
     )
   );
 
+-- Local guest fallback: changing a selection before kickoff upserts the same
+-- (entry_id, week) row, which needs UPDATE privileges. Scoped to existing
+-- entries (via the leaderboard view), consistent with the insert policy.
+create policy "Anon guests can update picks"
+  on public.picks for update
+  using (
+    auth.uid() is null
+    and exists (
+      select 1 from public.league_leaderboard lb where lb.entry_id = entry_id
+    )
+  );
+
 create policy "Users can update their own picks"
   on public.picks for update
   using (

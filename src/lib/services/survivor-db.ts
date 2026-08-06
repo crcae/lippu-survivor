@@ -2,6 +2,7 @@
 
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
+import { SEASON_YEAR } from "@/lib/mock-survivor-data";
 import type {
   EntryStatus,
   League,
@@ -682,16 +683,57 @@ export async function getLeagueDashboardData(
 // ── Picks ───────────────────────────────────────────────────────────────────
 
 /**
- * Upserts a pick for an entry+week pair, honoring the unique
- * `(entry_id, week)` constraint.
+ * Submits (upserts) a pick for an entry+week pair, enforcing the survivor
+ * rules against the live schedule in `nfl_games`:
+ *
+ * - **Lock rule:** the picked team's game must not have kicked off yet
+ *   (`start_time <= now()` → rejected).
+ * - **Team rule:** a team already picked in any earlier week is rejected.
+ *
+ * The write uses an `upsert` honoring the unique `(entry_id, week)`
+ * constraint, so re-submitting the same week updates the existing row.
  */
-export async function savePickInDb(
+export async function submitPickInDb(
   entryId: string,
   week: number,
   teamId: NFLTeamId,
 ): Promise<void> {
   const supabase = createClient();
 
+  // 1) Lock rule — the game must still be scheduled and in the future.
+  const { data: game, error: gameError } = await supabase
+    .from("nfl_games")
+    .select("id, start_time, status")
+    .or(`home_team_id.eq.${teamId},away_team_id.eq.${teamId}`)
+    .eq("week", week)
+    .eq("season_year", SEASON_YEAR)
+    .maybeSingle();
+  if (gameError) throw gameError;
+
+  if (game) {
+    const started =
+      game.status !== "scheduled" ||
+      new Date(game.start_time).getTime() <= Date.now();
+    if (started) {
+      throw new Error(
+        "Este partido ya comenzó y las selecciones están cerradas.",
+      );
+    }
+  }
+
+  // 2) Team rule — no team may be picked twice in a season.
+  const { data: previous, error: previousError } = await supabase
+    .from("picks")
+    .select("week")
+    .eq("entry_id", entryId)
+    .lt("week", week)
+    .eq("team_id", teamId);
+  if (previousError) throw previousError;
+  if (previous && previous.length > 0) {
+    throw new Error("Ya seleccionaste a este equipo en una semana anterior.");
+  }
+
+  // 3) Persist (upsert honoring the unique `(entry_id, week)` constraint).
   const { error } = await supabase.from("picks").upsert(
     { entry_id: entryId, week, team_id: teamId, result: "pending" },
     { onConflict: "entry_id,week" },
