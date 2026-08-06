@@ -463,13 +463,18 @@ export async function createLeagueInDb(
     .single();
   if (leagueError) throwSupabaseError("inserción de la liga", leagueError);
 
-  console.log("[survivor-db] Inserting owner entry row...", { leagueId: league.id });
-  const { error: entryError } = await supabase.from("entries").insert({
-    user_id: user.id,
-    league_id: league.id,
-    entry_name: `Entrada 1 - ${user.displayName}`,
-  });
-  if (entryError) throwSupabaseError("inserción de la entrada del dueño", entryError);
+  // Paid leagues get NO free owner entry: the commissioner must first pay the
+  // entry fee (the dashboard redirects them to the checkout). Only free leagues
+  // auto-register the owner's first entry here.
+  if (payload.leagueType !== "paid") {
+    console.log("[survivor-db] Inserting owner entry row...", { leagueId: league.id });
+    const { error: entryError } = await supabase.from("entries").insert({
+      user_id: user.id,
+      league_id: league.id,
+      entry_name: `Entrada 1 - ${user.displayName}`,
+    });
+    if (entryError) throwSupabaseError("inserción de la entrada del dueño", entryError);
+  }
 
   console.log("[survivor-db] League created", { leagueId: league.id });
   return { leagueId: league.id };
@@ -539,6 +544,15 @@ export async function joinLeagueInDb(
     .maybeSingle();
   if (leagueError) throw leagueError;
   if (!league) throw new Error("La liga no existe.");
+
+  // Strict payment gate — paid leagues only grant entries through the Kushki
+  // charge flow (`/api/payments/kushki/charge` → `createPaidEntry`), never
+  // through this free-join path.
+  if (league.league_type === "paid") {
+    throw new Error(
+      "Esta liga es de paga: completa el pago para crear tu entrada.",
+    );
+  }
 
   const { count: userEntries, error: countError } = await supabase
     .from("entries")
@@ -1452,7 +1466,7 @@ export async function submitPickInDb(
       new Date(game.start_time).getTime() <= Date.now();
     if (started) {
       throw new Error(
-        "Este partido ya comenzó y las selecciones están cerradas.",
+        "El partido ya comenzó. No puedes cambiar tu pick.",
       );
     }
   }

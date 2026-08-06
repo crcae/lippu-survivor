@@ -372,7 +372,7 @@ export default function JoinLeaguePreviewPage() {
                   className="w-full"
                   onClick={handlePaidContinue}
                 >
-                  Continuar al Pago
+                  Pagar Entrada ({formatMxn(totalToPay)})
                   <ArrowRight className="w-4 h-4" />
                 </Button>
                 <p className="text-center text-xs text-text-secondary">

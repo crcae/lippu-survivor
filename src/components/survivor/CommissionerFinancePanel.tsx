@@ -5,12 +5,10 @@ import {
   CreditCard,
   Info,
   Landmark,
-  Percent,
   Save,
   Search,
   Trophy,
   Users,
-  Wallet,
 } from "lucide-react";
 import { Badge, Button, Card, useToast } from "@/components/ui";
 import {
@@ -160,8 +158,6 @@ export function CommissionerFinancePanel({
   const payoutReady = leagueStatus === "completed";
 
   const prizePool = financials?.prizePool ?? 0;
-  const platformFee = financials?.platformFee ?? 0;
-  const totalGross = financials?.totalGross ?? 0;
   const paidParticipants = financials?.paidParticipants ?? 0;
   const totalEntries = financials?.totalEntries ?? 0;
 
@@ -255,7 +251,7 @@ export function CommissionerFinancePanel({
       {!loading && !loadError && (
         <>
           {/* KPI metric cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <Card variant="elevated" className={kpiCardClass}>
               <div className="flex items-center gap-2">
                 <Trophy className="w-4 h-4 text-warning" />
@@ -268,36 +264,6 @@ export function CommissionerFinancePanel({
               </p>
               <p className="text-xs text-text-secondary">
                 100% destinado al ganador de la liga
-              </p>
-            </Card>
-
-            <Card variant="elevated" className={kpiCardClass}>
-              <div className="flex items-center gap-2">
-                <Percent className="w-4 h-4 text-accent" />
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
-                  Comisión de Plataforma
-                </p>
-              </div>
-              <p className="text-2xl font-bold text-text-primary tabular-nums">
-                {formatMxn(platformFee)}
-              </p>
-              <p className="text-xs text-text-secondary">
-                Tarifa de servicio Lippu ({financials?.platformFeePercent ?? platformFeePercent}%)
-              </p>
-            </Card>
-
-            <Card variant="elevated" className={kpiCardClass}>
-              <div className="flex items-center gap-2">
-                <Wallet className="w-4 h-4 text-info" />
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
-                  Total Recaudado Bruto
-                </p>
-              </div>
-              <p className="text-2xl font-bold text-text-primary tabular-nums">
-                {formatMxn(totalGross)}
-              </p>
-              <p className="text-xs text-text-secondary">
-                Suma de pagos aprobados
               </p>
             </Card>
 
@@ -323,7 +289,7 @@ export function CommissionerFinancePanel({
               <Info className="w-5 h-5 text-info shrink-0" />
               <p className="text-sm text-text-secondary">
                 Esta es una liga gratuita: no se cobran entradas, así que los
-                montos son $0 y cada jugador aparece como{" "}
+                montos son $0 MXN y cada jugador aparece como{" "}
                 <span className="font-semibold">&quot;Gratis&quot;</span>.
               </p>
             </div>
@@ -432,8 +398,9 @@ export function CommissionerFinancePanel({
             )}
           </Card>
 
-          {/* Payout section */}
-          <Card variant="elevated" className="p-6 space-y-5">
+          {/* Payout section — bank details only apply to paid leagues */}
+          {!isFree && (
+            <Card variant="elevated" className="p-6 space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <div className="flex items-center gap-3">
                 <span className="w-10 h-10 rounded-xl bg-success/15 border border-success/30 flex items-center justify-center shrink-0">
@@ -552,7 +519,8 @@ export function CommissionerFinancePanel({
                 </Button>
               )}
             </form>
-          </Card>
+            </Card>
+          )}
         </>
       )}
     </section>

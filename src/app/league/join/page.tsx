@@ -194,6 +194,14 @@ export default function JoinLeaguePage() {
       return;
     }
 
+    // Paid leagues route through the Kushki checkout (`/join/[id]`), never the
+    // free-join path.
+    if (validatedLeague.league.leagueType === "paid") {
+      setSubmitting(false);
+      router.push(`/join/${validatedLeague.league.id}?checkout=true`);
+      return;
+    }
+
     try {
       await joinLeagueInDb(
         validatedLeague.league.id,

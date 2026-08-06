@@ -109,16 +109,16 @@ export function formatGameStatus(game: NFLGame): string {
   }
 }
 
-/** Format a number as a compact currency string. */
+/** Format a number as a compact MXN currency string, e.g. "$2,400 MXN". */
 export function formatMoney(amount: number): string {
   return new Intl.NumberFormat("es-MX", {
     style: "currency",
-    currency: "USD",
+    currency: "MXN",
     maximumFractionDigits: 0,
   }).format(amount);
 }
 
-/** Format a league prize pool, e.g. "$2,400". */
+/** Format a league prize pool, e.g. "$2,400 MXN". */
 export function formatPrizePool(amount: number): string {
   return formatMoney(amount);
 }

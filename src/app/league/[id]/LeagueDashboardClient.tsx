@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { SearchX, Sparkles } from "lucide-react";
+import { SearchX, Sparkles, Trophy } from "lucide-react";
 
 import { useToast } from "@/components/ui";
 import {
@@ -613,6 +613,29 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
             platformFeePercent={dbLeague.platformFeePercent ?? 8}
             currentUserId={currentUser.id}
           />
+        )}
+
+        {isReal && dbLeague && dbLeague.leagueType === "free" && (
+          <div className="rounded-2xl border border-accent/40 bg-gradient-to-r from-primary/10 via-accent/10 to-primary/10 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center gap-3 sm:gap-4">
+            <span className="w-10 h-10 rounded-xl bg-accent/15 border border-accent/30 flex items-center justify-center shrink-0">
+              <Trophy className="w-5 h-5 text-accent" />
+            </span>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-bold text-text-primary">
+                ¿Quieres competir por dinero real?
+              </p>
+              <p className="text-xs text-text-secondary mt-0.5">
+                Crea una Liga de Paga con cobro automático por Kushki y juega
+                por una bolsa de premios.
+              </p>
+            </div>
+            <Link
+              href="/create-league"
+              className="inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary-hover transition-all duration-200 shadow-glow shrink-0"
+            >
+              Crear Liga de Paga aquí
+            </Link>
+          </div>
         )}
 
         <LeagueHeader

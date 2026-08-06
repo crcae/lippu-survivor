@@ -85,9 +85,17 @@ export default function CreateLeaguePage() {
       setSubmitting(false);
 
       const shareUrl = `${window.location.origin}/join/${leagueId}`;
-      success(`¡Liga creada! Comparte tu enlace: ${shareUrl}`);
+      success(
+        leagueType === "paid"
+          ? "¡Liga creada! Ahora paga tu entrada para activar tu liga."
+          : `¡Liga creada! Comparte tu enlace: ${shareUrl}`,
+      );
       setTimeout(() => {
-        router.push(`/league/${leagueId}`);
+        router.push(
+          leagueType === "paid"
+            ? `/join/${leagueId}?checkout=true`
+            : `/league/${leagueId}`,
+        );
       }, 1800);
     } catch (err) {
       setSubmitting(false);
