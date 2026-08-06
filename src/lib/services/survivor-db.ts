@@ -1187,15 +1187,12 @@ export async function getNflGamesInDb(
     return mapped;
   }
 
-  // Week 18 is a protected slate: it is read strictly from `public.nfl_games`
-  // and NEVER triggers an ESPN sync that could overwrite curated games. Rows
-  // already present are returned immediately above; even when empty, the week
-  // is served as-is and the auto-sync below is skipped for week 18.
-  const protectedWeek = week === 18;
-
+  // Week 18 is synced exactly like every other week — no protection/skip. Rows
+  // already present are returned immediately above; when missing (or stale) the
+  // auto-sync below triggers an ESPN refresh of the requested week.
   // Auto-sync missing games for week from ESPN API into public.nfl_games.
   try {
-    if (typeof window !== "undefined" && !protectedWeek) {
+    if (typeof window !== "undefined") {
       await fetch(`/api/nfl/scoreboard?week=${week}&year=${year}`, {
         cache: "no-store",
       });
@@ -1225,9 +1222,8 @@ export async function getNflGamesInDb(
 }
 
 /**
- * Counts how many real games are already stored for a week. Used to protect
- * the Week 18 slate: when rows already exist the sync is skipped so ESPN can
- * never overwrite the curated Week 18 games.
+ * Counts how many real games are already stored for a week in
+ * `public.nfl_games`. Generic helper (e.g. for seeding/sync tooling).
  */
 export async function countGamesForWeekInDb(
   week: number,

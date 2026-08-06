@@ -1,20 +1,23 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { fetchNflGames } from "@/lib/espn";
-import { ACTIVE_WEEK, SEASON_YEAR } from "@/lib/mock-survivor-data";
+import { SEASON_YEAR } from "@/lib/mock-survivor-data";
 import {
   evaluatePendingPicksForSeason,
   syncNflGamesInDb,
 } from "@/lib/services/nfl-sync";
-import { countGamesForWeekInDb } from "@/lib/services/survivor-db";
 
 export const runtime = "nodejs";
 
+const REGULAR_SEASON_WEEKS = 18;
+
 /**
- * GET /api/cron/nfl-scores?week=6
- * Scheduled job: fetches the ESPN scoreboard for every week up to the active
- * week, upserts finals into `public.nfl_games` and settles any `pending` picks
- * (win/loss/push + entry elimination). Idempotent and safe to re-run — only
- * `pending` picks are evaluated, so strikes are never double-counted.
+ * GET /api/cron/nfl-scores
+ * Scheduled job (see `vercel.json`): fetches the ESPN scoreboard for ALL 18
+ * regular-season weeks, upserts finals into `public.nfl_games` and settles any
+ * `pending` picks (win/loss/push + entry elimination). Week 18 is NOT skipped
+ * or protected — it is synced exactly like every other week so its slate and
+ * results stay current. Idempotent and safe to re-run — only `pending` picks
+ * are evaluated, so strikes are never double-counted.
  *
  * Security: requires `Authorization: Bearer <CRON_SECRET>` when the
  * `CRON_SECRET` env var is set. When unset the endpoint answers with a 403 so
@@ -40,33 +43,10 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const { searchParams } = request.nextUrl;
-  const weekParam = searchParams.get("week");
-  const maxWeek = weekParam
-    ? Number.parseInt(weekParam, 10)
-    : ACTIVE_WEEK;
-
-  if (!Number.isInteger(maxWeek) || maxWeek < 1 || maxWeek > 18) {
-    return NextResponse.json(
-      { error: "Parámetro 'week' inválido. Debe ser un entero entre 1 y 18." },
-      { status: 400 },
-    );
-  }
-
   let synced = 0;
-  for (let week = 1; week <= maxWeek; week += 1) {
+  for (let week = 1; week <= REGULAR_SEASON_WEEKS; week += 1) {
     const { games, source } = await fetchNflGames(week, SEASON_YEAR);
     if (source !== "espn") continue;
-
-    // Week 18 is protected: once `nfl_games` has its curated slate it is never
-    // overwritten by the ESPN sync.
-    try {
-      const existingWeek18 = week === 18 ? await countGamesForWeekInDb(week) : 0;
-      if (existingWeek18 > 0) continue;
-    } catch (err) {
-      console.error("[cron/nfl-scores] No se pudo contar la semana 18:", err);
-      continue;
-    }
 
     try {
       const { synced: weekSynced } = await syncNflGamesInDb(games);
@@ -79,7 +59,7 @@ export async function GET(request: NextRequest) {
   let evaluated = 0;
   let eliminated = 0;
   try {
-    const result = await evaluatePendingPicksForSeason(maxWeek);
+    const result = await evaluatePendingPicksForSeason(REGULAR_SEASON_WEEKS);
     evaluated = result.evaluated;
     eliminated = result.eliminated;
   } catch (err) {
@@ -93,7 +73,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     ok: true,
     year: SEASON_YEAR,
-    maxWeek,
+    weeks: REGULAR_SEASON_WEEKS,
     synced,
     evaluated,
     eliminated,

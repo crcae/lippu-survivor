@@ -65,12 +65,12 @@ export async function syncNflGamesInDb(
 
   const rows = games.map(
     (game): GameRow => {
-      const isWeek18 = game.week === 18;
       let startTime = game.startTime;
       if (!startTime || Number.isNaN(new Date(startTime).getTime())) {
-        const janMonth = 0;
+        // Kickoff not locked by the NFL yet (TBD) — fall back to the Week 18
+        // Sunday window so the schedule can still be seeded without crashing.
         const year = (game.seasonYear || SEASON_YEAR) + 1;
-        startTime = new Date(Date.UTC(year, janMonth, 10, 18, 0, 0)).toISOString();
+        startTime = new Date(Date.UTC(year, 0, 10, 18, 0, 0)).toISOString();
       }
       return {
         id: game.id,
@@ -78,30 +78,31 @@ export async function syncNflGamesInDb(
         season_year: game.seasonYear || SEASON_YEAR,
         home_team_id: game.homeTeamId,
         away_team_id: game.awayTeamId,
-        home_score: isWeek18 ? null : (game.homeScore ?? null),
-        away_score: isWeek18 ? null : (game.awayScore ?? null),
-        status: isWeek18 ? "scheduled" : game.status,
+        home_score: game.homeScore ?? null,
+        away_score: game.awayScore ?? null,
+        status: game.status,
         start_time: startTime,
       };
     },
   );
 
   try {
+    // ON CONFLICT (id) DO UPDATE — refreshes every game by its ESPN event id.
     const { data, error } = await supabase
       .from("nfl_games")
-      .upsert(rows, {
-        onConflict: "season_year,week,home_team_id,away_team_id",
-      })
+      .upsert(rows, { onConflict: "id" })
       .select("id");
 
     if (error) {
       console.warn(
-        "[nfl-sync] Composite key upsert warning, retrying on id:",
+        "[nfl-sync] Upsert by id warning, retrying on composite key:",
         error.message,
       );
       const { data: fallbackData, error: fallbackError } = await supabase
         .from("nfl_games")
-        .upsert(rows, { onConflict: "id" })
+        .upsert(rows, {
+          onConflict: "season_year,week,home_team_id,away_team_id",
+        })
         .select("id");
       if (fallbackError) {
         console.error("[nfl-sync] Fallback upsert failed:", fallbackError);

@@ -232,7 +232,9 @@ export async function fetchNflGames(
   week: number,
   year = SEASON_YEAR,
 ): Promise<NflGamesResult> {
-  const url = `${ESPN_SCOREBOARD_URL}?week=${week}&year=${year}`;
+  // `seasontype=2` pins ESPN to Regular Season so Weeks 1–18 (including Week 18
+  // with TBD kickoffs) are returned even before the slate is fully locked.
+  const url = `${ESPN_SCOREBOARD_URL}?dates=${year}&seasontype=2&week=${week}`;
 
   try {
     const response = await fetchWithTimeout(url, FETCH_TIMEOUT_MS);

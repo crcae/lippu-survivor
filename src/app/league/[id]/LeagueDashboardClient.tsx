@@ -164,8 +164,7 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
 
     // Real league: read from Supabase. The server-side sync (scoreboard route)
     // is fired best-effort so `nfl_games` stays fresh, then we re-read the DB.
-    // Week 18 is protected: it is read straight from `public.nfl_games` and
-    // never triggers an ESPN sync that could overwrite the curated slate.
+    // Week 18 is synced exactly like any other week.
     getNflGamesInDb(currentWeek, SEASON_YEAR)
       .then((dbGames) => {
         if (cancelled) return;
@@ -181,20 +180,18 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
         if (!cancelled) setGamesLoading(false);
       });
 
-    if (currentWeek !== 18) {
-      fetch(
-        `/api/nfl/scoreboard?week=${currentWeek}&year=${SEASON_YEAR}`,
-        { cache: "no-store" },
-      )
-        .catch(() => null)
-        .then(() => getNflGamesInDb(currentWeek, SEASON_YEAR))
-        .then((dbGames) => {
-          if (cancelled) return;
-          setGames(dbGames);
-          setGamesSource("db");
-        })
-        .catch(() => {});
-    }
+    fetch(
+      `/api/nfl/scoreboard?week=${currentWeek}&year=${SEASON_YEAR}`,
+      { cache: "no-store" },
+    )
+      .catch(() => null)
+      .then(() => getNflGamesInDb(currentWeek, SEASON_YEAR))
+      .then((dbGames) => {
+        if (cancelled) return;
+        setGames(dbGames);
+        setGamesSource("db");
+      })
+      .catch(() => {});
 
     return () => {
       cancelled = true;
@@ -219,16 +216,7 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
 
       // Trigger the server-side ESPN sync (updates nfl_games + evaluates picks)
       // then re-read the DB — the displayed games always come from Supabase.
-      // Week 18 is protected and never re-synced from ESPN.
-      if (currentWeek === 18) {
-        getNflGamesInDb(currentWeek, SEASON_YEAR)
-          .then((dbGames) => {
-            setGames(dbGames);
-            setGamesSource("db");
-          })
-          .catch(() => {});
-        return;
-      }
+      // Week 18 is synced exactly like any other week.
       fetch(
         `/api/nfl/scoreboard?week=${currentWeek}&year=${SEASON_YEAR}`,
         { cache: "no-store" },
