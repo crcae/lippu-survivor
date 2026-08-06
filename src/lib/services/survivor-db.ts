@@ -5,8 +5,10 @@ import { createClient } from "@/lib/supabase/client";
 import { SEASON_YEAR } from "@/lib/mock-survivor-data";
 import type {
   EntryStatus,
+  GameStatus,
   League,
   LeaderboardParticipant,
+  NFLGame,
   NFLTeamId,
   PickResult,
   WeekPicks,
@@ -83,6 +85,18 @@ interface PickRow {
   updated_at: string;
 }
 
+interface NflGameRow {
+  id: string;
+  week: number;
+  season_year: number;
+  home_team_id: string;
+  away_team_id: string;
+  home_score: number | null;
+  away_score: number | null;
+  status: GameStatus;
+  start_time: string;
+}
+
 interface LeaderboardRow {
   league_id: string;
   user_id: string;
@@ -143,6 +157,8 @@ export interface LeagueDashboardData {
   leaderboard: LeaderboardParticipant[];
   /** Picks grouped by entry id, so multi-entry contexts stay isolated. */
   picksByEntry: Record<string, WeekPicks>;
+  /** Real games for the requested week, straight from `public.nfl_games`. */
+  games: NFLGame[];
 }
 
 export interface CurrentUser {
@@ -182,6 +198,20 @@ function mapLeagueEntry(row: EntryRow): LeagueEntry {
     status: row.status,
     strikes: row.strikes,
     eliminatedWeek: row.eliminated_week ?? undefined,
+  };
+}
+
+function mapNflGame(row: NflGameRow): NFLGame {
+  return {
+    id: row.id,
+    week: row.week,
+    seasonYear: row.season_year,
+    homeTeamId: row.home_team_id as NFLTeamId,
+    awayTeamId: row.away_team_id as NFLTeamId,
+    homeScore: row.home_score ?? undefined,
+    awayScore: row.away_score ?? undefined,
+    status: row.status,
+    startTime: row.start_time,
   };
 }
 
@@ -520,6 +550,28 @@ export async function joinLeagueInDb(
 // ── Dashboard ───────────────────────────────────────────────────────────────
 
 /**
+ * Fetches the real games for a week directly from `public.nfl_games`. There is
+ * NO mock fallback: the rows are the single source of truth for the season.
+ * Returns an empty list when the week has no synced games yet.
+ */
+export async function getNflGamesInDb(
+  week: number,
+  year = SEASON_YEAR,
+): Promise<NFLGame[]> {
+  const supabase = createClient();
+
+  const { data, error } = await supabase
+    .from("nfl_games")
+    .select("*")
+    .eq("week", week)
+    .eq("season_year", year)
+    .order("start_time", { ascending: true });
+  if (error) throw error;
+
+  return (data ?? []).map(mapNflGame);
+}
+
+/**
  * Loads a single league from Supabase. Returns `null` when the league does not
  * exist. Never returns mock data — the caller decides how to render a missing
  * league.
@@ -620,7 +672,8 @@ export async function getLeagueLeaderboardInDb(
 
 /**
  * Loads everything the league dashboard needs: league details, the real
- * leaderboard (with pick history), the current user's entries and their picks.
+ * leaderboard (with pick history), the current user's entries, their picks and
+ * the real `public.nfl_games` for the requested week.
  *
  * Only real Supabase rows are returned — mock data is never injected. When the
  * league does not exist, `league` is `null`; when auxiliary queries fail they
@@ -629,6 +682,7 @@ export async function getLeagueLeaderboardInDb(
  */
 export async function getLeagueDashboardData(
   leagueId: string,
+  week: number,
 ): Promise<LeagueDashboardData> {
   const supabase = createClient();
 
@@ -647,7 +701,13 @@ export async function getLeagueDashboardData(
     .maybeSingle();
   if (leagueError) throw leagueError;
   if (!leagueRow) {
-    return { league: null, userEntries: [], leaderboard: [], picksByEntry: {} };
+    return {
+      league: null,
+      userEntries: [],
+      leaderboard: [],
+      picksByEntry: {},
+      games: [],
+    };
   }
 
   const league = mapLeague(leagueRow);
@@ -677,7 +737,18 @@ export async function getLeagueDashboardData(
     console.warn("[survivor-db] No se pudieron cargar tus entradas:", err);
   }
 
-  return { league, userEntries, leaderboard, picksByEntry };
+  // 4) Real games for the week — straight from `public.nfl_games`, no mock.
+  let games: NFLGame[] = [];
+  try {
+    games = await getNflGamesInDb(week);
+  } catch (err) {
+    console.warn(
+      "[survivor-db] No se pudieron cargar los partidos de la semana:",
+      err,
+    );
+  }
+
+  return { league, userEntries, leaderboard, picksByEntry, games };
 }
 
 // ── Picks ───────────────────────────────────────────────────────────────────

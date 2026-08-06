@@ -8,6 +8,7 @@ import {
   WEEK_NUMBERS,
   getTeam,
 } from "@/lib/mock-survivor-data";
+import { getNflGamesInDb } from "@/lib/services/survivor-db";
 import {
   formatMatchup,
   matchupForTeam,
@@ -25,6 +26,8 @@ interface PickHistoryDrawerProps {
   onClose: () => void;
   picks: WeekPicks;
   currentWeek: number;
+  /** Demo mode reads the ESPN API; real leagues read `public.nfl_games`. */
+  isDemo?: boolean;
 }
 
 function resolveResult(
@@ -68,6 +71,7 @@ export function PickHistoryDrawer({
   onClose,
   picks,
   currentWeek,
+  isDemo = false,
 }: PickHistoryDrawerProps) {
   const [weekGames, setWeekGames] = useState<Record<number, NFLGame>>({});
   const [results, setResults] = useState<Record<number, PickResult>>({});
@@ -82,9 +86,14 @@ export function PickHistoryDrawer({
 
     if (weeksWithPicks.length === 0) return;
 
+    const fetchGames = (week: number): Promise<NFLGame[]> =>
+      isDemo
+        ? getNflGames(week, SEASON_YEAR).then((result) => result.games)
+        : getNflGamesInDb(week, SEASON_YEAR);
+
     Promise.allSettled(
       weeksWithPicks.map((week) =>
-        getNflGames(week, SEASON_YEAR).then((result) => ({ week, result })),
+        fetchGames(week).then((games) => ({ week, games })),
       ),
     ).then((settled) => {
       if (cancelled) return;
@@ -96,9 +105,9 @@ export function PickHistoryDrawer({
         const week = weeksWithPicks[index];
 
         if (entry.status === "fulfilled") {
-          const { result } = entry.value;
+          const { games } = entry.value;
           const teamId = picks[week];
-          const game = result.games.find(
+          const game = games.find(
             (g) => g.homeTeamId === teamId || g.awayTeamId === teamId,
           );
           if (game) {
@@ -117,7 +126,7 @@ export function PickHistoryDrawer({
     return () => {
       cancelled = true;
     };
-  }, [isOpen, currentWeek, picks]);
+  }, [isOpen, currentWeek, picks, isDemo]);
 
   if (!isOpen) return null;
 

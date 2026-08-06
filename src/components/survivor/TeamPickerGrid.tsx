@@ -13,7 +13,7 @@ import {
 import type { NFLGame, NFLTeamId } from "@/types";
 import { TeamMark } from "./TeamMark";
 
-export type SurvivorDataSource = "espn" | "mock";
+export type SurvivorDataSource = "espn" | "mock" | "db";
 
 interface TeamPickerGridProps {
   week: number;
@@ -119,7 +119,8 @@ function TeamGameInfo({
 
 export function TeamPickerGrid(props: TeamPickerGridProps) {
   const { games, week, now, onSelect, dataSource = "mock" } = props;
-  const isLiveSource = dataSource === "espn";
+  const isLiveSource = dataSource === "espn" || dataSource === "db";
+  const isRealData = dataSource === "db";
 
   const isLockedWeek =
     games.length > 0 &&
@@ -139,7 +140,7 @@ export function TeamPickerGrid(props: TeamPickerGridProps) {
                 <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-success opacity-75" />
                 <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-success" />
               </span>
-              ESPN · En vivo
+              {isRealData ? "Calendario real 2026" : "ESPN · En vivo"}
             </Badge>
           ) : (
             <Badge variant="warning" className="border-warning/40 bg-warning/10 text-warning">
@@ -236,6 +237,13 @@ export function TeamPickerGrid(props: TeamPickerGridProps) {
                   </span>
 
                   <TeamGameInfo game={game} now={now} />
+
+                  {state.label === "selected" && (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent/15 border border-accent/40 text-accent text-[10px] font-bold">
+                      <Check className="w-2.5 h-2.5" strokeWidth={3} />
+                      Tu selección
+                    </span>
+                  )}
                 </button>
               );
             });

@@ -34,6 +34,7 @@ import {
 import {
   getCurrentUser,
   getLeagueDashboardData,
+  getNflGamesInDb,
   submitPickInDb,
   type CurrentUser,
   type LeagueEntry,
@@ -134,48 +135,104 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
     };
   }, []);
 
-  // Load games for the active week (ESPN → mock fallback).
+  // Load games for the active week. Demo uses the ESPN API (with mock
+  // fallback); real leagues read straight from `public.nfl_games` — never mock.
   useEffect(() => {
     let cancelled = false;
 
-    getNflGames(currentWeek, SEASON_YEAR)
-      .then((result) => {
+    if (isDemo) {
+      getNflGames(currentWeek, SEASON_YEAR)
+        .then((result) => {
+          if (cancelled) return;
+          setGames(result.games);
+          setGamesSource(result.source);
+        })
+        .catch(() => {
+          if (cancelled) return;
+          setGames(buildMockGames(currentWeek, SEASON_YEAR));
+          setGamesSource("mock");
+        })
+        .finally(() => {
+          if (!cancelled) setGamesLoading(false);
+        });
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    // Real league: read from Supabase. The server-side sync (scoreboard route)
+    // is fired best-effort so `nfl_games` stays fresh, then we re-read the DB.
+    getNflGamesInDb(currentWeek, SEASON_YEAR)
+      .then((dbGames) => {
         if (cancelled) return;
-        setGames(result.games);
-        setGamesSource(result.source);
+        setGames(dbGames);
+        setGamesSource("db");
       })
       .catch(() => {
         if (cancelled) return;
-        setGames(buildMockGames(currentWeek, SEASON_YEAR));
-        setGamesSource("mock");
+        setGames([]);
+        setGamesSource("db");
       })
       .finally(() => {
         if (!cancelled) setGamesLoading(false);
       });
 
+    fetch(
+      `/api/nfl/scoreboard?week=${currentWeek}&year=${SEASON_YEAR}`,
+      { cache: "no-store" },
+    )
+      .catch(() => null)
+      .then(() => getNflGamesInDb(currentWeek, SEASON_YEAR))
+      .then((dbGames) => {
+        if (cancelled) return;
+        setGames(dbGames);
+        setGamesSource("db");
+      })
+      .catch(() => {});
+
     return () => {
       cancelled = true;
     };
-  }, [currentWeek]);
+  }, [isDemo, currentWeek]);
 
-  // Poll while any game is live.
+  // Poll while any game is live: refresh from the DB (real) or ESPN (demo).
   useEffect(() => {
     const hasLiveGames = games.some((game) => game.status === "in_progress");
     if (!hasLiveGames) return;
 
     const id = setInterval(() => {
-      getNflGames(currentWeek, SEASON_YEAR)
-        .then((result) => {
-          setGames(result.games);
-          setGamesSource(result.source);
+      if (isDemo) {
+        getNflGames(currentWeek, SEASON_YEAR)
+          .then((result) => {
+            setGames(result.games);
+            setGamesSource(result.source);
+          })
+          .catch(() => {});
+        return;
+      }
+
+      // Trigger the server-side ESPN sync (updates nfl_games + evaluates picks)
+      // then re-read the DB — the displayed games always come from Supabase.
+      fetch(
+        `/api/nfl/scoreboard?week=${currentWeek}&year=${SEASON_YEAR}`,
+        { cache: "no-store" },
+      )
+        .catch(() => null)
+        .then(() => getNflGamesInDb(currentWeek, SEASON_YEAR))
+        .then((dbGames) => {
+          setGames(dbGames);
+          setGamesSource("db");
         })
         .catch(() => {});
     }, POLL_INTERVAL_MS);
 
     return () => clearInterval(id);
-  }, [games, currentWeek]);
+  }, [games, currentWeek, isDemo]);
 
   // Load real league data from Supabase (skipped for `/league/demo`).
+  // Re-runs when the active week changes to also refresh the week's games and
+  // leaderboard, but only performs the full state reset on the first load.
+  const loadedOnceRef = useRef(false);
   useEffect(() => {
     if (isDemo) {
       const idle = setTimeout(() => {
@@ -187,12 +244,14 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
 
     let cancelled = false;
     const reset = setTimeout(() => {
-      setDbLoadState("loading");
-      setDbLeague(null);
-      setDbUserEntries([]);
-      setDbLeaderboard([]);
-      setDbPicksByEntry({});
-      setCurrentUser(null);
+      if (!loadedOnceRef.current) {
+        setDbLoadState("loading");
+        setDbLeague(null);
+        setDbUserEntries([]);
+        setDbLeaderboard([]);
+        setDbPicksByEntry({});
+        setCurrentUser(null);
+      }
     }, 0);
 
     // Resolve the current identity (auth session or local guest UUID) so the
@@ -205,17 +264,21 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
         if (!cancelled) setCurrentUser(null);
       });
 
-    getLeagueDashboardData(leagueId)
+    getLeagueDashboardData(leagueId, currentWeek)
       .then((data) => {
         if (cancelled) return;
         if (data.league) {
+          loadedOnceRef.current = true;
           setDbLeague(data.league);
           setDbUserEntries(data.userEntries);
           setDbLeaderboard(data.leaderboard);
           setDbPicksByEntry(data.picksByEntry);
+          setGames(data.games);
+          setGamesSource("db");
           setDbLoadState("ready");
           if (data.userEntries.length > 0) {
-            setActiveEntryId(data.userEntries[0].id);
+            // Keep the user's active entry across week switches.
+            setActiveEntryId((prev) => prev || data.userEntries[0].id);
           }
         } else {
           setDbLoadState("none");
@@ -229,7 +292,7 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
       cancelled = true;
       clearTimeout(reset);
     };
-  }, [isDemo, leagueId]);
+  }, [isDemo, leagueId, currentWeek]);
 
   const completedWeeks = useMemo(
     () => new Set(WEEK_NUMBERS.filter((week) => week < currentWeek)),
@@ -365,7 +428,7 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
         ...prev,
         [activeEntryId]: { ...(prev[activeEntryId] ?? {}), [week]: teamId },
       }));
-      success("¡Selección guardada con éxito!");
+      success(`¡Selección guardada con éxito para la Semana ${week}!`);
     } else {
       success("¡Pick confirmado para la semana " + week + "!");
     }
@@ -593,6 +656,7 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
         }}
         picks={picks}
         currentWeek={currentWeek}
+        isDemo={isDemo}
       />
     </div>
   );
