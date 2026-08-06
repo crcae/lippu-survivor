@@ -67,7 +67,7 @@ export async function syncNflGamesInDb(
     (game): GameRow => {
       const isWeek18 = game.week === 18;
       let startTime = game.startTime;
-      if (isWeek18 || !startTime || Number.isNaN(new Date(startTime).getTime())) {
+      if (!startTime || Number.isNaN(new Date(startTime).getTime())) {
         const janMonth = 0;
         const year = (game.seasonYear || SEASON_YEAR) + 1;
         startTime = new Date(Date.UTC(year, janMonth, 10, 18, 0, 0)).toISOString();

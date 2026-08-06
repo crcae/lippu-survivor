@@ -206,7 +206,7 @@ export function TeamPickerGrid(props: TeamPickerGridProps) {
                   title={tooltip}
                   onClick={() => onSelect(teamId)}
                   className={[
-                    "group relative flex flex-col items-center gap-1.5 rounded-2xl border p-3 text-center transition-all duration-200 focus-ring min-h-[64px] touch-manipulation w-full overflow-hidden",
+                    "group relative flex flex-col items-center gap-1.5 rounded-2xl border p-3 text-center transition-all duration-200 focus-ring min-h-[64px] h-auto touch-manipulation w-full overflow-visible",
                     canClick && "active:scale-95",
                     state.label === "selected"
                       ? "border-accent bg-primary/20 ring-1 ring-accent shadow-glow"
@@ -218,7 +218,7 @@ export function TeamPickerGrid(props: TeamPickerGridProps) {
                   ].join(" ")}
                 >
                   {/* Game date tag */}
-                  <span className="w-full text-[10px] font-semibold leading-tight text-text-secondary tabular-nums truncate">
+                  <span className="w-full text-[10px] font-semibold leading-tight text-text-secondary tabular-nums whitespace-normal break-words flex-wrap text-center h-auto px-0.5">
                     {game.isTbd ? "TBD" : formatFullGameDate(game.startTime)}
                   </span>
 

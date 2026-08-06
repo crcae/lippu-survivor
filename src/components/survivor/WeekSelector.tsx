@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { CalendarDays, Check } from "lucide-react";
+import { CalendarDays } from "lucide-react";
 
 interface WeekSelectorProps {
   weeks: number[];
   currentWeek: number;
-  completedWeeks: Set<number>;
+  completedWeeks?: Set<number>;
   picks?: Record<number, string>;
   onChange: (week: number) => void;
 }
@@ -14,7 +14,6 @@ interface WeekSelectorProps {
 export function WeekSelector({
   weeks,
   currentWeek,
-  completedWeeks,
   picks,
   onChange,
 }: WeekSelectorProps) {
@@ -45,8 +44,7 @@ export function WeekSelector({
       >
         {weeks.map((week) => {
           const isCurrent = week === currentWeek;
-          const isCompleted = completedWeeks.has(week);
-          const hasFuturePick = !isCompleted && Boolean(picks?.[week]);
+          const hasPick = Boolean(picks?.[week]);
 
           return (
             <button
@@ -61,19 +59,13 @@ export function WeekSelector({
               className={`shrink-0 snap-start inline-flex items-center gap-1.5 px-4 py-2 rounded-full border text-sm font-semibold transition-all duration-200 focus-ring active:scale-95 ${
                 isCurrent
                   ? "bg-primary text-white border-primary shadow-glow"
-                  : isCompleted
-                    ? "bg-surface text-text-secondary border-border hover:border-primary/40 hover:text-text-primary"
-                    : hasFuturePick
-                      ? "bg-accent/10 text-accent border-accent/40 hover:border-accent"
-                      : "bg-surface text-text-secondary border-border hover:border-primary/40 hover:text-text-primary"
+                  : hasPick
+                    ? "bg-accent/10 text-accent border-accent/40 hover:border-accent"
+                    : "bg-surface text-text-secondary border-border hover:border-primary/40 hover:text-text-primary"
               }`}
             >
-              {/* Checkmark ONLY on past/completed weeks */}
-              {isCompleted && !isCurrent && (
-                <Check className="w-3.5 h-3.5 text-success" />
-              )}
-              {/* Subtle status indicator dot for future weeks with a pick saved */}
-              {hasFuturePick && !isCurrent && (
+              {/* Status indicator dot for weeks with a pick saved */}
+              {hasPick && !isCurrent && (
                 <span className="w-1.5 h-1.5 rounded-full bg-accent" />
               )}
               {/* Active week indicator glow */}
