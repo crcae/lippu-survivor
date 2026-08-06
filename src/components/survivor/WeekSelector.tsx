@@ -7,6 +7,7 @@ interface WeekSelectorProps {
   weeks: number[];
   currentWeek: number;
   completedWeeks: Set<number>;
+  picks?: Record<number, string>;
   onChange: (week: number) => void;
 }
 
@@ -14,6 +15,7 @@ export function WeekSelector({
   weeks,
   currentWeek,
   completedWeeks,
+  picks,
   onChange,
 }: WeekSelectorProps) {
   const pillRefs = useRef<Record<number, HTMLButtonElement | null>>({});
@@ -44,6 +46,7 @@ export function WeekSelector({
         {weeks.map((week) => {
           const isCurrent = week === currentWeek;
           const isCompleted = completedWeeks.has(week);
+          const hasFuturePick = !isCompleted && Boolean(picks?.[week]);
 
           return (
             <button
@@ -60,12 +63,20 @@ export function WeekSelector({
                   ? "bg-primary text-white border-primary shadow-glow"
                   : isCompleted
                     ? "bg-surface text-text-secondary border-border hover:border-primary/40 hover:text-text-primary"
-                    : "bg-surface text-text-secondary border-border hover:border-primary/40 hover:text-text-primary"
+                    : hasFuturePick
+                      ? "bg-accent/10 text-accent border-accent/40 hover:border-accent"
+                      : "bg-surface text-text-secondary border-border hover:border-primary/40 hover:text-text-primary"
               }`}
             >
+              {/* Checkmark ONLY on past/completed weeks */}
               {isCompleted && !isCurrent && (
                 <Check className="w-3.5 h-3.5 text-success" />
               )}
+              {/* Subtle status indicator dot for future weeks with a pick saved */}
+              {hasFuturePick && !isCurrent && (
+                <span className="w-1.5 h-1.5 rounded-full bg-accent" />
+              )}
+              {/* Active week indicator glow */}
               {isCurrent && (
                 <span className="relative flex h-1.5 w-1.5">
                   <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />

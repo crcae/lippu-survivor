@@ -600,6 +600,33 @@ export async function getNflGamesInDb(
     .order("start_time", { ascending: true });
   if (error) throw error;
 
+  if (data && data.length > 0) {
+    return data.map(mapNflGame);
+  }
+
+  // Auto-sync missing games for week from ESPN API into public.nfl_games
+  try {
+    if (typeof window !== "undefined") {
+      await fetch(`/api/nfl/scoreboard?week=${week}&year=${year}`, {
+        cache: "no-store",
+      });
+    }
+  } catch (syncErr) {
+    console.warn(`[survivor-db] Auto-sync triggered failed for week ${week}:`, syncErr);
+  }
+
+  const { data: refreshed, error: refError } = await supabase
+    .from("nfl_games")
+    .select("*")
+    .eq("week", week)
+    .eq("season_year", year)
+    .gte("start_time", `${year}-01-01`)
+    .order("start_time", { ascending: true });
+
+  if (!refError && refreshed && refreshed.length > 0) {
+    return refreshed.map(mapNflGame);
+  }
+
   return (data ?? []).map(mapNflGame);
 }
 
@@ -833,11 +860,13 @@ export async function submitPickInDb(
     .from("picks")
     .select("week")
     .eq("entry_id", entryId)
-    .lt("week", week)
+    .neq("week", week)
     .eq("team_id", teamId);
   if (previousError) throw previousError;
   if (previous && previous.length > 0) {
-    throw new Error("Ya seleccionaste a este equipo en una semana anterior.");
+    throw new Error(
+      `Ya seleccionaste a este equipo en la Semana ${previous[0].week}.`,
+    );
   }
 
   // 3) Persist (upsert honoring the unique `(entry_id, week)` constraint).

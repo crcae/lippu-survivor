@@ -294,9 +294,11 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
     };
   }, [isDemo, leagueId, currentWeek]);
 
+  const activeSeasonWeek = ACTIVE_WEEK;
+
   const completedWeeks = useMemo(
-    () => new Set(WEEK_NUMBERS.filter((week) => week < currentWeek)),
-    [currentWeek],
+    () => new Set(WEEK_NUMBERS.filter((week) => week < activeSeasonWeek)),
+    [activeSeasonWeek],
   );
 
   // ── Hybrid data: real league (Supabase) vs demo (mock + localStorage) ──
@@ -590,6 +592,7 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
             weeks={WEEK_NUMBERS}
             currentWeek={currentWeek}
             completedWeeks={completedWeeks}
+            picks={picks}
             onChange={handleWeekChange}
           />
 
