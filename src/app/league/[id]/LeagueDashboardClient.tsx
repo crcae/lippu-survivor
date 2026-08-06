@@ -10,6 +10,7 @@ import {
   type MobileNavTab,
 } from "@/components/layout/MobileNav";
 import {
+  CommissionerFinancePanel,
   CommissionerPanel,
   CurrentPickBadge,
   LeagueHeader,
@@ -600,6 +601,17 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
             capacity={dbLeague.capacity}
             maxEntriesPerUser={dbLeague.maxEntries}
             leagueStatus={dbLeague.status}
+          />
+        )}
+
+        {isOwner && dbLeague && currentUser && (
+          <CommissionerFinancePanel
+            leagueId={leagueId}
+            leagueName={dbLeague.name}
+            leagueStatus={dbLeague.status}
+            leagueType={dbLeague.leagueType}
+            platformFeePercent={dbLeague.platformFeePercent ?? 8}
+            currentUserId={currentUser.id}
           />
         )}
 

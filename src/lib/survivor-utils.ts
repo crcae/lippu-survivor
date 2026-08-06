@@ -123,6 +123,16 @@ export function formatPrizePool(amount: number): string {
   return formatMoney(amount);
 }
 
+/** Format an amount as Mexican pesos, e.g. "$50 MXN". */
+export function formatMxn(amount: number): string {
+  const formatted = new Intl.NumberFormat("es-MX", {
+    style: "currency",
+    currency: "MXN",
+    maximumFractionDigits: 0,
+  }).format(amount);
+  return `${formatted} MXN`;
+}
+
 function capitalize(value: string): string {
   return value.charAt(0).toUpperCase() + value.slice(1);
 }

@@ -91,11 +91,46 @@ create table public.leagues (
   capacity              integer, -- NULL = unlimited
   strikes_allowed       integer not null default 0 check (strikes_allowed between 0 and 1),
   entry_fee             numeric(10, 2) not null default 0,
+  platform_fee_percent  numeric(5, 2) not null default 8.00,
+  is_public             boolean not null default true,
+  league_type           text not null default 'free' check (league_type in ('paid', 'free')),
   invite_code           text not null unique,
   status                league_status not null default 'draft',
   created_at            timestamptz not null default now(),
   updated_at            timestamptz not null default now()
 );
+
+-- Phase 1 monetization columns (idempotent for databases created before
+-- they existed).
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'leagues'
+      and column_name = 'platform_fee_percent'
+  ) then
+    alter table public.leagues
+      add column platform_fee_percent numeric(5, 2) not null default 8.00;
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'leagues'
+      and column_name = 'is_public'
+  ) then
+    alter table public.leagues
+      add column is_public boolean not null default true;
+  end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'leagues'
+      and column_name = 'league_type'
+  ) then
+    alter table public.leagues
+      add column league_type text not null default 'free'
+      check (league_type in ('paid', 'free'));
+  end if;
+end
+$$;
 
 create index idx_leagues_owner_id on public.leagues (owner_id);
 create index idx_leagues_status on public.leagues (status);
@@ -201,6 +236,56 @@ create trigger trg_ticket_tokens_updated_at
   before update on public.ticket_tokens
   for each row execute function set_updated_at();
 
+-- ── Payments (Kushki) ───────────────────────────────────────────────────────
+-- One row per Kushki charge attempt for a paid league entry. Rows are inserted
+-- by the server-side charge route (`/api/payments/kushki/charge`) with the
+-- service-role client, so no public insert policy is required.
+
+create table public.payments (
+  id                   uuid primary key default uuid_generate_v4(),
+  league_id            uuid not null references public.leagues (id) on delete cascade,
+  user_id              uuid not null references public.profiles (id) on delete cascade,
+  entry_id             uuid references public.entries (id) on delete set null,
+  ticket_amount        numeric(10, 2) not null default 0,
+  platform_fee_amount  numeric(10, 2) not null default 0,
+  total_paid           numeric(10, 2) not null default 0,
+  currency             text not null default 'MXN',
+  kushki_ticket_number text,
+  status               text not null default 'approved' check (status in ('approved', 'declined')),
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now()
+);
+
+create index idx_payments_league_id on public.payments (league_id);
+create index idx_payments_user_id on public.payments (user_id);
+create index idx_payments_status on public.payments (status);
+
+create trigger trg_payments_updated_at
+  before update on public.payments
+  for each row execute function set_updated_at();
+
+-- ── Commissioner Payout Details ─────────────────────────────────────────────
+-- Bank information the league commissioner saves so Lippu can liquidate the
+-- prize pool. Keyed 1:1 to the league. Writes happen server-side through
+-- `/api/payments/payout-details` (admin client + owner check); RLS below keeps
+-- the data away from direct client reads except by the authenticated owner.
+
+create table public.commissioner_payout_details (
+  id              uuid primary key default uuid_generate_v4(),
+  league_id       uuid not null unique references public.leagues (id) on delete cascade,
+  bank_name       text,
+  clabe           text,
+  account_holder  text,
+  created_at      timestamptz not null default now(),
+  updated_at      timestamptz not null default now()
+);
+
+create index idx_payout_details_league on public.commissioner_payout_details (league_id);
+
+create trigger trg_commissioner_payout_details_updated_at
+  before update on public.commissioner_payout_details
+  for each row execute function set_updated_at();
+
 -- ============================================================================
 -- Row Level Security
 -- ============================================================================
@@ -211,6 +296,8 @@ alter table public.entries  enable row level security;
 alter table public.picks    enable row level security;
 alter table public.nfl_games enable row level security;
 alter table public.ticket_tokens enable row level security;
+alter table public.payments enable row level security;
+alter table public.commissioner_payout_details enable row level security;
 
 -- ── Profiles ──
 -- Everyone can read profiles (to show names/avatars in leaderboards).
@@ -407,6 +494,46 @@ create policy "Anyone can update ticket tokens"
   on public.ticket_tokens for update
   using (true)
   with check (true);
+
+-- ── Payments ──
+-- Users can read their own payments (payment history). Inserts happen through
+-- the server-side charge route using the service-role key, which bypasses RLS.
+
+create policy "Users can read their own payments"
+  on public.payments for select
+  using (auth.uid() = user_id);
+
+-- ── Commissioner Payout Details ──
+-- Only the league owner can read/write payout details directly. The in-app
+-- save flow goes through the server route (admin client + owner check), which
+-- also supports guest commissioners whose UUID is the league `owner_id`.
+
+create policy "Owners can read payout details"
+  on public.commissioner_payout_details for select
+  using (
+    exists (
+      select 1 from public.leagues l
+      where l.id = league_id and l.owner_id = auth.uid()
+    )
+  );
+
+create policy "Owners can insert payout details"
+  on public.commissioner_payout_details for insert
+  with check (
+    exists (
+      select 1 from public.leagues l
+      where l.id = league_id and l.owner_id = auth.uid()
+    )
+  );
+
+create policy "Owners can update payout details"
+  on public.commissioner_payout_details for update
+  using (
+    exists (
+      select 1 from public.leagues l
+      where l.id = league_id and l.owner_id = auth.uid()
+    )
+  );
 
 -- ============================================================================
 -- Helper views

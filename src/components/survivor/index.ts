@@ -24,6 +24,9 @@ export type { LeaderboardTableProps } from "./LeaderboardTable";
 export { CommissionerPanel } from "./CommissionerPanel";
 export type { CommissionerPanelProps } from "./CommissionerPanel";
 
+export { CommissionerFinancePanel } from "./CommissionerFinancePanel";
+export type { CommissionerFinancePanelProps } from "./CommissionerFinancePanel";
+
 export { TeamMark } from "./TeamMark";
 export type { TeamMarkProps, TeamMarkSize } from "./TeamMark";
 

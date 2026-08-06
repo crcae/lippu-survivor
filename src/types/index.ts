@@ -31,6 +31,12 @@ export interface League {
   capacity?: number;
   strikesAllowed?: number;
   entryFee?: number;
+  /** "paid" when players pay to join, "free" otherwise. */
+  leagueType?: "paid" | "free";
+  /** When true the league is listed on the public landing page. */
+  isPublic?: boolean;
+  /** Platform fee charged per entry (e.g. 8 = 8%). */
+  platformFeePercent?: number;
   createdAt: string;
   updatedAt: string;
 }

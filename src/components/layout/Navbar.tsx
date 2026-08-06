@@ -5,12 +5,14 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Menu, X } from "lucide-react";
 import { FootballIcon } from "@/components/ui";
+import { MyLeaguesDropdown } from "@/components/navigation/MyLeaguesDropdown";
 import { SEASON_YEAR } from "@/lib/mock-survivor-data";
 import { getCurrentUser, type CurrentUser } from "@/lib/services/survivor-db";
 
 const NAV_LINKS = [
-  { href: "/league/demo", label: "Dashboard Demo" },
-  { href: "/league/create", label: "Crear Liga" },
+  { href: "/", label: "Explorar Ligas" },
+  { href: "/my-leagues", label: "Mis Ligas" },
+  { href: "/create-league", label: "Crear Liga" },
   { href: "/league/join", label: "Unirse con Código" },
 ];
 
@@ -38,7 +40,9 @@ export function Navbar() {
   }, []);
 
   const isActive = (href: string) =>
-    pathname === href || pathname.startsWith(href);
+    href === "/"
+      ? pathname === "/"
+      : pathname === href || pathname.startsWith(href);
 
   const displayName = user?.displayName || user?.email?.split("@")[0] || "Jugador";
   const avatarInitial = (displayName[0] || "J").toUpperCase();
@@ -61,19 +65,23 @@ export function Navbar() {
 
         {/* Desktop links */}
         <div className="hidden md:flex items-center gap-1">
-          {NAV_LINKS.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={`${linkClass} ${
-                isActive(link.href)
-                  ? "bg-primary/15 text-accent border border-primary/30"
-                  : "text-text-secondary hover:text-text-primary hover:bg-surface"
-              }`}
-            >
-              {link.label}
-            </Link>
-          ))}
+          {NAV_LINKS.map((link) =>
+            link.href === "/my-leagues" ? (
+              <MyLeaguesDropdown key={link.href} />
+            ) : (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={`${linkClass} ${
+                  isActive(link.href)
+                    ? "bg-primary/15 text-accent border border-primary/30"
+                    : "text-text-secondary hover:text-text-primary hover:bg-surface"
+                }`}
+              >
+                {link.label}
+              </Link>
+            ),
+          )}
         </div>
 
         {/* User pill */}

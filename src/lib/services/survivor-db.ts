@@ -2,7 +2,7 @@
 
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
-import { SEASON_YEAR } from "@/lib/mock-survivor-data";
+import { ACTIVE_WEEK, SEASON_YEAR } from "@/lib/mock-survivor-data";
 import type {
   EntryStatus,
   GameStatus,
@@ -56,6 +56,9 @@ interface LeagueRow {
   capacity: number | null;
   strikes_allowed: number;
   entry_fee: number | string;
+  platform_fee_percent: number | string;
+  is_public: boolean;
+  league_type: "paid" | "free";
   invite_code: string;
   status: League["status"];
   created_at: string;
@@ -117,8 +120,14 @@ export interface CreateLeaguePayload {
   /** Defaults to `100` (a generous safe limit for guest leagues) when omitted. */
   maxEntriesPerUser?: number;
   strikesAllowed: number;
-  /** Defaults to `0` (monetization happens on Lippu.app) when omitted. */
+  /** Defaults to `0` (free league) when omitted. */
   entryFee?: number;
+  /** Defaults to `"free"` when omitted. */
+  leagueType?: "paid" | "free";
+  /** Defaults to `true` (appears on the landing page) when omitted. */
+  isPublic?: boolean;
+  /** Defaults to `8` (8% platform fee) when omitted. */
+  platformFeePercent?: number;
   inviteCode: string;
 }
 
@@ -185,6 +194,9 @@ function mapLeague(row: LeagueRow): League {
     capacity: row.capacity ?? undefined,
     strikesAllowed: row.strikes_allowed,
     entryFee: Number(row.entry_fee),
+    leagueType: row.league_type === "paid" ? "paid" : "free",
+    isPublic: row.is_public ?? true,
+    platformFeePercent: Number(row.platform_fee_percent ?? 8),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -441,6 +453,9 @@ export async function createLeagueInDb(
       capacity: payload.capacity ?? null,
       strikes_allowed: payload.strikesAllowed,
       entry_fee: payload.entryFee ?? 0,
+      league_type: payload.leagueType ?? "free",
+      is_public: payload.isPublic ?? true,
+      platform_fee_percent: payload.platformFeePercent ?? 8,
       invite_code: payload.inviteCode,
       status: "active",
     })
@@ -572,6 +587,547 @@ export async function joinLeagueInDb(
   if (insertError) throw insertError;
 
   return { entryId: entry.id };
+}
+
+// ── Phase 1: Public discovery & join preview ────────────────────────────────
+
+export interface PublicLeague {
+  id: string;
+  name: string;
+  leagueType: "paid" | "free";
+  entryFee: number;
+  platformFeePercent: number;
+  /** Entries still alive (active players). */
+  activeParticipants: number;
+  /** `entry_fee * active_entries_count`. */
+  totalPot: number;
+}
+
+interface PublicLeagueRow {
+  id: string;
+  name: string;
+  league_type: "paid" | "free";
+  entry_fee: number | string;
+  platform_fee_percent: number | string;
+}
+
+/**
+ * Lists the public, active leagues for the landing page: `is_public = true`,
+ * `status = 'active'` and current season. Active participant counts are read
+ * from `entries` in a single batched query, so the total pot
+ * (`entry_fee * active_entries_count`) is always live. Returns `[]` when there
+ * are no public leagues (never mock data).
+ */
+export async function getPublicLeaguesInDb(): Promise<PublicLeague[]> {
+  const supabase = createClient();
+
+  const { data: leagueRows, error } = await supabase
+    .from("leagues")
+    .select("*")
+    .eq("is_public", true)
+    .eq("status", "active")
+    .eq("season_year", SEASON_YEAR)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  if (!leagueRows || leagueRows.length === 0) return [];
+
+  const ids = (leagueRows as PublicLeagueRow[]).map((row) => row.id);
+  const { data: entryRows } = await supabase
+    .from("entries")
+    .select("league_id")
+    .in("league_id", ids)
+    .eq("status", "alive");
+
+  const counts = new Map<string, number>();
+  for (const entry of entryRows ?? []) {
+    counts.set(entry.league_id, (counts.get(entry.league_id) ?? 0) + 1);
+  }
+
+  return (leagueRows as PublicLeagueRow[]).map((row) => {
+    const activeParticipants = counts.get(row.id) ?? 0;
+    const entryFee = Number(row.entry_fee ?? 0);
+    return {
+      id: row.id,
+      name: row.name,
+      leagueType: row.league_type === "paid" ? "paid" : "free",
+      entryFee,
+      platformFeePercent: Number(row.platform_fee_percent ?? 8),
+      activeParticipants,
+      totalPot: Math.round(entryFee * activeParticipants),
+    };
+  });
+}
+
+export interface LeaguePreview {
+  league: League;
+  entryCount: number;
+  activeParticipants: number;
+  participants: { entryName: string; status: EntryStatus }[];
+  ownerName?: string;
+}
+
+/**
+ * Fetches a full public preview of a league for `/join/[id]`: league details
+ * (with fee/visibility/type), participant list, counts and commissioner name.
+ * Returns `null` when the league does not exist.
+ */
+export async function getLeaguePreviewInDb(
+  leagueId: string,
+): Promise<LeaguePreview | null> {
+  const supabase = createClient();
+
+  const { data: leagueRow, error } = await supabase
+    .from("leagues")
+    .select("*")
+    .eq("id", leagueId)
+    .maybeSingle();
+  if (error) throw error;
+  if (!leagueRow) return null;
+
+  const league = mapLeague(leagueRow as LeagueRow);
+
+  const { data: entryRows, error: entriesError } = await supabase
+    .from("entries")
+    .select("entry_name, status")
+    .eq("league_id", leagueId)
+    .order("created_at", { ascending: true });
+  if (entriesError) throw entriesError;
+
+  const participants = (entryRows ?? []).map((entry) => ({
+    entryName: entry.entry_name,
+    status: entry.status as EntryStatus,
+  }));
+
+  let ownerName = "Comisionado";
+  try {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("display_name, email")
+      .eq("id", leagueRow.owner_id)
+      .maybeSingle();
+    if (profile) {
+      ownerName =
+        profile.display_name || profile.email?.split("@")[0] || "Comisionado";
+    }
+  } catch {
+    // Best-effort profile fetch.
+  }
+
+  return {
+    league,
+    entryCount: participants.length,
+    activeParticipants: participants.filter((p) => p.status === "alive").length,
+    participants,
+    ownerName,
+  };
+}
+
+// ── Phase 3: Commissioner Financials ────────────────────────────────────────
+
+interface PaymentRow {
+  id: string;
+  league_id: string;
+  user_id: string;
+  entry_id: string | null;
+  ticket_amount: number | string;
+  platform_fee_amount: number | string;
+  total_paid: number | string;
+  currency: string;
+  kushki_ticket_number: string | null;
+  status: "approved" | "declined";
+  created_at: string;
+  updated_at: string;
+}
+
+/** Payment state per entry, computed from `payments` + league type. */
+export type FinancialEntryPaymentStatus = "approved" | "pending" | "free";
+
+/** One audit-table row: a league entry enriched with its approved payment. */
+export interface FinancialEntryRecord {
+  entryId: string;
+  entryName: string;
+  userId: string;
+  playerName: string;
+  playerEmail?: string;
+  paymentStatus: FinancialEntryPaymentStatus;
+  /** Actual charged amount when approved; expected fee when pending (paid leagues). */
+  ticketAmount: number;
+  platformFeeAmount: number;
+  totalPaid: number;
+  kushkiTicketNumber?: string;
+  paidAt?: string;
+  createdAt: string;
+}
+
+/** Aggregated financial snapshot for a league (approved payments only). */
+export interface LeagueFinancials {
+  leagueType: "paid" | "free";
+  entryFee: number;
+  platformFeePercent: number;
+  /** `SUM(ticket_amount)` approved → 100% goes to the winner. */
+  prizePool: number;
+  /** `SUM(platform_fee_amount)` approved → Lippu's service fee. */
+  platformFee: number;
+  /** `SUM(total_paid)` approved → gross collected. */
+  totalGross: number;
+  /** Entries with an approved payment. */
+  paidParticipants: number;
+  /** Total entries in the league. */
+  totalEntries: number;
+  currency: string;
+  entries: FinancialEntryRecord[];
+}
+
+/** Commissioner bank details for the payout. */
+export interface PayoutDetails {
+  bankName: string;
+  clabe: string;
+  accountHolder: string;
+}
+
+const round2 = (value: number): number => Math.round(value * 100) / 100;
+
+/**
+ * Loads everything the commissioner finance panel needs for a league: all
+ * entries (with player names/emails) joined with their approved payments.
+ *
+ * Financial KPIs are computed server-side from the approved `payments` rows:
+ * `prizePool` = SUM(ticket_amount), `platformFee` = SUM(platform_fee_amount),
+ * `totalGross` = SUM(total_paid). `paidParticipants` counts entries that have
+ * an approved payment. Returns `null` when the league does not exist.
+ *
+ * The returned `entries` array drives the audit table — one row per entry with
+ * `paymentStatus`: "approved" (has a paid row), "pending" (paid league, no
+ * payment yet) or "free" (free league). Expected amounts are shown for pending
+ * rows so the commissioner sees what's still owed.
+ */
+export async function getLeagueFinancialsInDb(
+  leagueId: string,
+): Promise<LeagueFinancials | null> {
+  const supabase = createClient();
+
+  const { data: leagueRow, error: leagueError } = await supabase
+    .from("leagues")
+    .select("*")
+    .eq("id", leagueId)
+    .maybeSingle();
+  if (leagueError) throw leagueError;
+  if (!leagueRow) return null;
+
+  const league = mapLeague(leagueRow as LeagueRow);
+  const isPaid = league.leagueType === "paid";
+  const entryFee = Number(league.entryFee ?? 0);
+  const feePercent = Number(league.platformFeePercent ?? 8);
+  const expectedFee = round2(entryFee * (feePercent / 100));
+  const expectedTotal = round2(entryFee + expectedFee);
+
+  const { data: entryRows, error: entriesError } = await supabase
+    .from("entries")
+    .select("id, user_id, entry_name, created_at")
+    .eq("league_id", leagueId)
+    .order("created_at", { ascending: true });
+  if (entriesError) throw entriesError;
+
+  const userIds = [
+    ...new Set((entryRows ?? []).map((entry) => entry.user_id)),
+  ];
+  const { data: profileRows } = await supabase
+    .from("profiles")
+    .select("id, display_name, email")
+    .in("id", userIds.length ? userIds : NO_ROWS);
+  const profileById = new Map(
+    (profileRows ?? []).map((row) => [row.id, row]),
+  );
+
+  const { data: paymentRows, error: paymentsError } = (await supabase
+    .from("payments")
+    .select("*")
+    .eq("league_id", leagueId)
+    .eq("status", "approved")) as {
+    data: PaymentRow[] | null;
+    error: Error | null;
+  };
+  if (paymentsError) throw paymentsError;
+
+  const paymentByEntry = new Map<string, PaymentRow>();
+  for (const payment of paymentRows ?? []) {
+    if (payment.entry_id) paymentByEntry.set(payment.entry_id, payment);
+  }
+
+  let prizePool = 0;
+  let platformFee = 0;
+  let totalGross = 0;
+
+  const entries: FinancialEntryRecord[] = (entryRows ?? []).map((entry) => {
+    const payment = paymentByEntry.get(entry.id);
+    const profile = profileById.get(entry.user_id);
+
+    const paymentStatus: FinancialEntryPaymentStatus = !isPaid
+      ? "free"
+      : payment
+        ? "approved"
+        : "pending";
+
+    const ticketAmount = payment
+      ? Number(payment.ticket_amount)
+      : isPaid
+        ? entryFee
+        : 0;
+    const platformFeeAmount = payment
+      ? Number(payment.platform_fee_amount)
+      : isPaid
+        ? expectedFee
+        : 0;
+    const totalPaid = payment
+      ? Number(payment.total_paid)
+      : isPaid
+        ? expectedTotal
+        : 0;
+
+    if (payment) {
+      prizePool += Number(payment.ticket_amount);
+      platformFee += Number(payment.platform_fee_amount);
+      totalGross += Number(payment.total_paid);
+    }
+
+    return {
+      entryId: entry.id,
+      entryName: entry.entry_name,
+      userId: entry.user_id,
+      playerName: profile?.display_name ?? "Jugador",
+      playerEmail: profile?.email ?? undefined,
+      paymentStatus,
+      ticketAmount: round2(ticketAmount),
+      platformFeeAmount: round2(platformFeeAmount),
+      totalPaid: round2(totalPaid),
+      kushkiTicketNumber:
+        payment?.kushki_ticket_number ?? undefined,
+      paidAt: payment?.created_at,
+      createdAt: entry.created_at,
+    };
+  });
+
+  return {
+    leagueType: league.leagueType ?? "free",
+    entryFee,
+    platformFeePercent: feePercent,
+    prizePool: round2(prizePool),
+    platformFee: round2(platformFee),
+    totalGross: round2(totalGross),
+    paidParticipants: entries.filter(
+      (entry) => entry.paymentStatus === "approved",
+    ).length,
+    totalEntries: entries.length,
+    currency: "MXN",
+    entries,
+  };
+}
+
+/**
+ * Reads the commissioner's saved payout details. Ownership is verified
+ * server-side against the league `owner_id`, so this works for authenticated
+ * and guest commissioners alike. Returns empty strings when nothing is saved.
+ */
+export async function getCommissionerPayoutDetails(
+  leagueId: string,
+  userId: string,
+): Promise<PayoutDetails> {
+  const query = new URLSearchParams({ leagueId, userId });
+  const res = await fetch(
+    `/api/payments/payout-details?${query.toString()}`,
+    { cache: "no-store" },
+  );
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as
+      | { error?: string }
+      | null;
+    throw new Error(body?.error ?? "No se pudieron cargar tus datos de retiro.");
+  }
+  const data = (await res.json()) as PayoutDetails;
+  return {
+    bankName: data.bankName ?? "",
+    clabe: data.clabe ?? "",
+    accountHolder: data.accountHolder ?? "",
+  };
+}
+
+/**
+ * Persists the commissioner's bank details via the owner-gated server route.
+ * Returns a normalized `PayoutDetails` on success so the form can stay in sync.
+ */
+export async function saveCommissionerPayoutDetails(
+  leagueId: string,
+  userId: string,
+  details: PayoutDetails,
+): Promise<PayoutDetails> {
+  const res = await fetch("/api/payments/payout-details", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ leagueId, userId, ...details }),
+  });
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as
+      | { error?: string }
+      | null;
+    throw new Error(body?.error ?? "No se pudieron guardar tus datos de retiro.");
+  }
+  return {
+    bankName: details.bankName.trim(),
+    clabe: details.clabe.replace(/\D/g, ""),
+    accountHolder: details.accountHolder.trim(),
+  };
+}
+
+// ── Phase 4: My Leagues (multi-league navigation) ───────────────────────────
+
+/**
+ * One league the user is enrolled in (via `public.entries`), aggregated per
+ * league. When the user owns several entries in the same league the
+ * representative entry is the first alive one (else the first with a pick,
+ * else the oldest), so survivor status and the current-week pick stay scannable.
+ */
+export interface EnrolledLeague {
+  leagueId: string;
+  leagueName: string;
+  leagueStatus: League["status"];
+  leagueType?: "paid" | "free";
+  entryFee?: number;
+  /** Representative entry id (prefer an alive entry). */
+  entryId: string;
+  entryName: string;
+  isCommissioner: boolean;
+  isAlive: boolean;
+  strikes?: number;
+  /** The user's pick for the current (`ACTIVE_WEEK`) week, if any. */
+  currentWeekPick?: NFLTeamId;
+  /** Total entries in the league (progress denominator). */
+  totalEntries: number;
+  /** Entries still alive in the league. */
+  remainingEntries: number;
+  /** How many entries this user has in the league. */
+  userEntriesCount: number;
+}
+
+/**
+ * Loads every league where the current user has an entry, grouped by league,
+ * with survivor status and the current-week pick. Powers the "Mis Ligas"
+ * dropdown and the `/my-leagues` hub. Returns `[]` when the user has no
+ * entries (never mock data).
+ */
+export async function getUserEnrolledLeaguesInDb(
+  userId: string,
+): Promise<EnrolledLeague[]> {
+  const supabase = createClient();
+
+  const { data: entryRows, error: entriesError } = (await supabase
+    .from("entries")
+    .select("*")
+    .eq("user_id", userId)) as {
+    data: EntryRow[] | null;
+    error: Error | null;
+  };
+  if (entriesError) throw entriesError;
+  if (!entryRows || entryRows.length === 0) return [];
+
+  const leagueIds = [...new Set(entryRows.map((row) => row.league_id))];
+  const entryIds = entryRows.map((row) => row.id);
+
+  const { data: leagueRows, error: leaguesError } = (await supabase
+    .from("leagues")
+    .select("*")
+    .in("id", leagueIds)) as {
+    data: LeagueRow[] | null;
+    error: Error | null;
+  };
+  if (leaguesError) throw leaguesError;
+
+  // Current-week pick per entry (the survivor status reads from `entries`,
+  // but the pick lives in `picks` keyed by `(entry_id, week)`).
+  const { data: pickRows } = (await supabase
+    .from("picks")
+    .select("entry_id, team_id")
+    .in("entry_id", entryIds.length ? entryIds : NO_ROWS)
+    .eq("week", ACTIVE_WEEK)) as {
+    data: { entry_id: string; team_id: string }[] | null;
+  };
+
+  // League-wide progress: total vs alive entries, across all entries.
+  const { data: allEntryRows } = (await supabase
+    .from("entries")
+    .select("league_id, status")
+    .in("league_id", leagueIds.length ? leagueIds : NO_ROWS)) as {
+    data: { league_id: string; status: EntryStatus }[] | null;
+  };
+
+  const pickByEntry = new Map<string, NFLTeamId>();
+  for (const pick of pickRows ?? []) {
+    pickByEntry.set(pick.entry_id, pick.team_id as NFLTeamId);
+  }
+
+  const totalByLeague = new Map<string, number>();
+  const aliveByLeague = new Map<string, number>();
+  for (const entry of allEntryRows ?? []) {
+    totalByLeague.set(
+      entry.league_id,
+      (totalByLeague.get(entry.league_id) ?? 0) + 1,
+    );
+    if (entry.status === "alive") {
+      aliveByLeague.set(
+        entry.league_id,
+        (aliveByLeague.get(entry.league_id) ?? 0) + 1,
+      );
+    }
+  }
+
+  const userCountByLeague = new Map<string, number>();
+  for (const entry of entryRows) {
+    userCountByLeague.set(
+      entry.league_id,
+      (userCountByLeague.get(entry.league_id) ?? 0) + 1,
+    );
+  }
+
+  const result: EnrolledLeague[] = [];
+  for (const leagueRow of leagueRows ?? []) {
+    const league = mapLeague(leagueRow);
+    const userEntries = entryRows.filter(
+      (entry) => entry.league_id === league.id,
+    );
+    if (userEntries.length === 0) continue;
+
+    // Prefer an alive entry; else one that already picked this week; else the
+    // oldest entry. Keeps the dropdown summary meaningful for multi-entry users.
+    const representative =
+      userEntries.find((entry) => entry.status === "alive") ??
+      userEntries.find((entry) => pickByEntry.has(entry.id)) ??
+      userEntries[0];
+
+    result.push({
+      leagueId: league.id,
+      leagueName: league.name,
+      leagueStatus: league.status,
+      leagueType: league.leagueType,
+      entryFee: league.entryFee,
+      entryId: representative.id,
+      entryName: representative.entry_name,
+      isCommissioner: league.ownerId === userId,
+      isAlive: representative.status === "alive",
+      strikes: representative.strikes,
+      currentWeekPick: pickByEntry.get(representative.id),
+      totalEntries: totalByLeague.get(league.id) ?? 0,
+      remainingEntries: aliveByLeague.get(league.id) ?? 0,
+      userEntriesCount: userCountByLeague.get(league.id) ?? 0,
+    });
+  }
+
+  // Active first, alive first, then by name — most actionable on top.
+  return result.sort((a, b) => {
+    if (a.leagueStatus !== b.leagueStatus) {
+      return a.leagueStatus === "active" ? -1 : 1;
+    }
+    if (a.isAlive !== b.isAlive) return a.isAlive ? -1 : 1;
+    return a.leagueName.localeCompare(b.leagueName);
+  });
 }
 
 // ── Dashboard ───────────────────────────────────────────────────────────────
