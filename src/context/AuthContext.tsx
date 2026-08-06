@@ -11,7 +11,10 @@ import {
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/client";
-import { getLocalGuestId } from "@/lib/services/survivor-db";
+import {
+  getLocalGuestId,
+  readLocalGuestId,
+} from "@/lib/services/survivor-db";
 
 export interface AuthProfile {
   id: string;
@@ -96,9 +99,25 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     };
 
+    const localGuestProfile = (guestId: string): AuthProfile => ({
+      id: guestId,
+      email: `anon_${guestId.replace(/[^a-z0-9]/gi, "").slice(-12)}@lippu.app`,
+      displayName: "Guest",
+      avatarUrl: null,
+    });
+
     const ensureGuest = async () => {
-      // No session → create an anonymous auth user so every league, entry and
-      // pick persists. Requires "anonymous sign-ins" in the Supabase project.
+      // 1) Reuse an existing local guest profile (deterministic per device,
+      //    same identity the service layer uses for league creation).
+      const existingGuestId = readLocalGuestId();
+      if (existingGuestId) {
+        if (disposed) return;
+        setProfile(localGuestProfile(existingGuestId));
+        void upsertProfile(localGuestProfile(existingGuestId));
+        return;
+      }
+
+      // 2) Best-effort anonymous auth user (never blocks the guest flow).
       const { data, error } = await supabase.auth.signInAnonymously();
       if (disposed) return;
       if (!error && data.user) {
@@ -107,16 +126,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return;
       }
 
-      // Fallback: anonymous sign-ins disabled → deterministic local guest UUID
-      // (same one used by the service layer) so league creation never fails.
+      // 3) Fallback: anonymous sign-ins disabled → generate a local guest UUID
+      //    persisted to localStorage so league creation never fails.
       const guestId = getLocalGuestId();
       if (disposed) return;
-      const guestProfile: AuthProfile = {
-        id: guestId,
-        email: `anon_${guestId.replace(/[^a-z0-9]/gi, "").slice(-12)}@lippu.app`,
-        displayName: "Guest",
-        avatarUrl: null,
-      };
+      const guestProfile = localGuestProfile(guestId);
       setProfile(guestProfile);
       void upsertProfile(guestProfile);
     };

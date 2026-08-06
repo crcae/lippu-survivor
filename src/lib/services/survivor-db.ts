@@ -168,7 +168,7 @@ const NO_ROWS = ["00000000-0000-0000-0000-000000000000"];
 
 const GUEST_ID_KEY = "lippu_survivor_guest_id";
 
-function readLocalGuestId(): string | null {
+export function readLocalGuestId(): string | null {
   if (typeof window === "undefined") return null;
   try {
     return window.localStorage.getItem(GUEST_ID_KEY);
@@ -184,6 +184,19 @@ function writeLocalGuestId(id: string): void {
   } catch {
     // Storage unavailable — the guest id lives only for this session.
   }
+}
+
+/**
+ * Builds a local guest identity for the given UUID. Used both when reusing a
+ * persisted device guest and when generating a brand-new one.
+ */
+function localGuestFrom(guestId: string): CurrentUser {
+  return {
+    id: guestId,
+    email: `anon_${guestId.replace(/[^a-z0-9]/gi, "").slice(-12)}@lippu.app`,
+    displayName: "Guest",
+    isGuest: true,
+  };
 }
 
 function randomUuid(): string {
@@ -246,14 +259,15 @@ async function ensureProfileRow(user: CurrentUser): Promise<void> {
 /**
  * Returns the current user identity, guaranteeing a Supabase `profiles` row.
  *
- * Resolution order:
+ * Resolution order (never throws auth errors):
  * 1. Existing Supabase session (email/password, OAuth, etc.).
- * 2. Anonymous session via `signInAnonymously()` when anonymous sign-ins are
- *    enabled in the Supabase project.
- * 3. **Fallback:** a deterministic local guest id persisted in localStorage
- *    (`lippu_survivor_guest_id`), upserted directly into `profiles`. This keeps
- *    league creation and persistence working even when anonymous sign-ins are
- *    disabled.
+ * 2. Existing local guest profile persisted in localStorage
+ *    (`lippu_survivor_guest_id`) — deterministic per device.
+ * 3. Best-effort anonymous sign-in; its user id becomes the persisted guest id
+ *    so identity stays stable across reloads. Failing silently here is fine.
+ * 4. **Fallback:** generate a fresh UUID v4, persist it to localStorage and
+ *    insert directly into `profiles`. League creation therefore never fails
+ *    when anonymous sign-ins are disabled.
  *
  * Returns `null` only when the Supabase env vars are missing entirely.
  */
@@ -277,9 +291,23 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     return current;
   }
 
-  // 2) Anonymous Supabase sign-in.
+  // 2) Existing local guest profile (deterministic per device).
+  const existingGuestId = readLocalGuestId();
+  if (existingGuestId) {
+    const current = localGuestFrom(existingGuestId);
+    try {
+      await ensureProfileRow(current);
+    } catch {
+      // Best-effort: the league insert below still carries the guest id.
+    }
+    return current;
+  }
+
+  // 3) Best-effort anonymous sign-in (only when no local guest exists yet).
+  //    Any failure here is swallowed — it must never block league creation.
   const guest = await supabase.auth.signInAnonymously();
   if (!guest.error && guest.data.user) {
+    writeLocalGuestId(guest.data.user.id);
     const current = mapUser(guest.data.user);
     try {
       await ensureProfileRow(current);
@@ -289,14 +317,9 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
     return current;
   }
 
-  // 3) Local guest UUID fallback (anonymous sign-ins disabled).
+  // 4) Generate and persist a local guest UUID, inserted directly into profiles.
   const guestId = getLocalGuestId();
-  const localGuest: CurrentUser = {
-    id: guestId,
-    email: `anon_${guestId.replace(/[^a-z0-9]/gi, "").slice(-12)}@lippu.app`,
-    displayName: "Guest",
-    isGuest: true,
-  };
+  const localGuest = localGuestFrom(guestId);
   try {
     await ensureProfileRow(localGuest);
   } catch {
@@ -310,10 +333,12 @@ export async function getCurrentUser(): Promise<CurrentUser | null> {
 
 /**
  * Creates a league owned by the current user. Guarantees a `profiles` row for
- * the owner and registers their first `entries` row. Returns the new league id.
+ * the owner (auto-created as a local guest when needed) and registers their
+ * first `entries` row. Returns the new league id so the caller can redirect
+ * straight to `/league/[id]`.
  *
- * Never falls back to mock data: throws when Supabase is unavailable so the
- * caller can surface the error to the user.
+ * Never throws auth errors for missing sessions: guests fall back to a
+ * deterministic local UUID so creation always succeeds.
  */
 export async function createLeagueInDb(
   payload: CreateLeaguePayload,
@@ -356,7 +381,7 @@ export async function createLeagueInDb(
   const { error: entryError } = await supabase.from("entries").insert({
     user_id: user.id,
     league_id: league.id,
-    entry_name: "Entrada #1",
+    entry_name: `Entrada 1 - ${user.displayName}`,
   });
   if (entryError) throw entryError;
 

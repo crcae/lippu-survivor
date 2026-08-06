@@ -5,7 +5,6 @@ import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   CheckCircle2,
-  KeyRound,
   LogIn,
   Shield,
   Ticket,
@@ -53,7 +52,7 @@ export default function JoinLeaguePage() {
   const router = useRouter();
   const { success } = useToast();
 
-  const [tab, setTab] = useState<JoinTab>("invite");
+  const [tab, setTab] = useState<JoinTab>("ticket");
   const [code, setCode] = useState("");
   const [ticketCode, setTicketCode] = useState("");
   const [entryName, setEntryName] = useState("Entrada #1");
@@ -224,31 +223,60 @@ export default function JoinLeaguePage() {
         </div>
 
         <Card variant="elevated" className="p-6 sm:p-8 space-y-6">
-          {/* Segmented tabs */}
-          <div className="grid grid-cols-2 gap-1 p-1 rounded-2xl bg-surface-elevated border border-border">
-            <button
-              type="button"
-              onClick={() => setTab("invite")}
-              className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 ${
-                tab === "invite"
-                  ? "bg-primary text-white shadow"
-                  : "text-text-secondary hover:text-text-primary"
-              }`}
-            >
-              <KeyRound className="w-4 h-4" />
-              Código de Invitación
-            </button>
+          {/* Join method selector — Ticket promoted, Invite secondary */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <button
               type="button"
               onClick={() => setTab("ticket")}
-              className={`inline-flex items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold transition-all duration-200 ${
+              aria-pressed={tab === "ticket"}
+              className={`relative rounded-2xl border-2 p-4 text-left transition-all duration-200 focus-ring ${
                 tab === "ticket"
-                  ? "bg-accent text-white shadow"
-                  : "text-text-secondary hover:text-text-primary"
+                  ? "border-accent bg-primary/15 shadow-glow"
+                  : "border-border bg-surface hover:border-accent/50"
               }`}
             >
-              <Ticket className="w-4 h-4" />
-              Ticket de Lippu
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xl" aria-hidden="true">
+                  🎟️
+                </span>
+                <Badge variant="warning">Torneos Oficiales</Badge>
+              </div>
+              <p className="mt-2.5 font-bold text-text-primary">
+                Tengo un Ticket Lippu
+              </p>
+              <p className="mt-1 text-xs text-text-secondary">
+                Canjea tu entrada comprada en Lippu.app
+              </p>
+              {tab === "ticket" && (
+                <CheckCircle2 className="absolute top-3.5 right-3 w-5 h-5 text-accent" />
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setTab("invite")}
+              aria-pressed={tab === "invite"}
+              className={`relative rounded-2xl border-2 p-4 text-left transition-all duration-200 focus-ring ${
+                tab === "invite"
+                  ? "border-primary bg-primary/15 shadow-glow"
+                  : "border-border bg-surface hover:border-primary/50"
+              }`}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-xl" aria-hidden="true">
+                  🔑
+                </span>
+                <Badge variant="default">Amigos</Badge>
+              </div>
+              <p className="mt-2.5 font-bold text-text-primary">
+                Código de Invitación
+              </p>
+              <p className="mt-1 text-xs text-text-secondary">
+                Ligas entre Amigos / Privadas
+              </p>
+              {tab === "invite" && (
+                <CheckCircle2 className="absolute top-3.5 right-3 w-5 h-5 text-primary" />
+              )}
             </button>
           </div>
 
@@ -256,6 +284,77 @@ export default function JoinLeaguePage() {
             <p className="text-sm text-danger bg-danger/10 border border-danger/40 rounded-xl px-4 py-2.5">
               {error}
             </p>
+          )}
+
+          {/* ── Ticket tab ───────────────────────────────────────────────── */}
+          {tab === "ticket" && (
+            <div className="space-y-6 animate-fade-in-up">
+              {ticketResult ? (
+                <div className="rounded-2xl border border-success/40 bg-success/10 p-6 text-center">
+                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-success/20 text-success mb-4">
+                    <CheckCircle2 className="w-8 h-8" />
+                  </div>
+                  <Badge variant="success" className="mb-3">
+                    Ticket canjeado
+                  </Badge>
+                  <h2 className="text-xl font-bold text-text-primary">
+                    ¡Ya eres parte de {ticketResult.leagueName}!
+                  </h2>
+                  <p className="text-text-secondary mt-2">
+                    Se otorgaron{" "}
+                    <span className="font-semibold text-text-primary">
+                      {ticketResult.entriesCount}{" "}
+                      {ticketResult.entriesCount === 1 ? "entrada" : "entradas"}
+                    </span>{" "}
+                    en la liga. El comisionado ya puede ver tu participación.
+                  </p>
+                  <Button
+                    variant="primary"
+                    size="lg"
+                    className="mt-6 w-full"
+                    onClick={() => router.push(`/league/${ticketResult.leagueId}`)}
+                  >
+                    Entrar a la Liga
+                    <ArrowRight className="w-4 h-4" />
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-2 rounded-2xl border border-accent/40 bg-primary/10 p-4">
+                  <label htmlFor="ticket-code" className="text-sm font-semibold text-text-primary">
+                    <span className="inline-flex items-center gap-2">
+                      <Ticket className="w-4 h-4 text-accent" />
+                      Código de boleto
+                    </span>
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      id="ticket-code"
+                      type="text"
+                      value={ticketCode}
+                      onChange={(e) => {
+                        setTicketCode(e.target.value);
+                        setTicketResult(null);
+                      }}
+                      placeholder="LIPPU-TK-12345"
+                      autoComplete="off"
+                      autoCapitalize="characters"
+                      className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-mono font-bold uppercase text-primary placeholder:text-text-secondary/30 focus:border-primary/60 focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all duration-200"
+                    />
+                    <Button
+                      variant="accent"
+                      size="md"
+                      onClick={() => void redeemTicket(ticketCode)}
+                      isLoading={redeeming}
+                    >
+                      {redeeming ? "Canjeando…" : "Canjear"}
+                    </Button>
+                  </div>
+                  <p className="text-xs text-text-secondary">
+                    Introduce el código de boleto generado al comprar en Lippu.app.
+                  </p>
+                </div>
+              )}
+            </div>
           )}
 
           {/* ── Invite code tab ──────────────────────────────────────────── */}
@@ -355,77 +454,6 @@ export default function JoinLeaguePage() {
               >
                 {submitting ? "Ingresando…" : "Confirmar e Ingresar"}
               </Button>
-            </div>
-          )}
-
-          {/* ── Ticket tab ───────────────────────────────────────────────── */}
-          {tab === "ticket" && (
-            <div className="space-y-6 animate-fade-in-up">
-              {ticketResult ? (
-                <div className="rounded-2xl border border-success/40 bg-success/10 p-6 text-center">
-                  <div className="inline-flex items-center justify-center w-14 h-14 rounded-full bg-success/20 text-success mb-4">
-                    <CheckCircle2 className="w-8 h-8" />
-                  </div>
-                  <Badge variant="success" className="mb-3">
-                    Ticket canjeado
-                  </Badge>
-                  <h2 className="text-xl font-bold text-text-primary">
-                    ¡Ya eres parte de {ticketResult.leagueName}!
-                  </h2>
-                  <p className="text-text-secondary mt-2">
-                    Se otorgaron{" "}
-                    <span className="font-semibold text-text-primary">
-                      {ticketResult.entriesCount}{" "}
-                      {ticketResult.entriesCount === 1 ? "entrada" : "entradas"}
-                    </span>{" "}
-                    en la liga. El comisionado ya puede ver tu participación.
-                  </p>
-                  <Button
-                    variant="primary"
-                    size="lg"
-                    className="mt-6 w-full"
-                    onClick={() => router.push(`/league/${ticketResult.leagueId}`)}
-                  >
-                    Entrar a la Liga
-                    <ArrowRight className="w-4 h-4" />
-                  </Button>
-                </div>
-              ) : (
-                <div className="space-y-2 rounded-2xl border border-accent/40 bg-primary/10 p-4">
-                  <label htmlFor="ticket-code" className="text-sm font-semibold text-text-primary">
-                    <span className="inline-flex items-center gap-2">
-                      <Ticket className="w-4 h-4 text-accent" />
-                      Código de boleto
-                    </span>
-                  </label>
-                  <div className="flex gap-2">
-                    <input
-                      id="ticket-code"
-                      type="text"
-                      value={ticketCode}
-                      onChange={(e) => {
-                        setTicketCode(e.target.value);
-                        setTicketResult(null);
-                      }}
-                      placeholder="LIPPU-TK-12345"
-                      autoComplete="off"
-                      autoCapitalize="characters"
-                      className="w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm font-mono font-bold uppercase text-primary placeholder:text-text-secondary/30 focus:border-primary/60 focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all duration-200"
-                    />
-                    <Button
-                      variant="accent"
-                      size="md"
-                      onClick={() => void redeemTicket(ticketCode)}
-                      isLoading={redeeming}
-                    >
-                      {redeeming ? "Canjeando…" : "Canjear"}
-                    </Button>
-                  </div>
-                  <p className="text-xs text-text-secondary">
-                    Introduce el código de boleto generado al comprar en Lippu.app.
-                  </p>
-                </div>
-              )}
             </div>
           )}
         </Card>

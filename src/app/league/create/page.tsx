@@ -81,7 +81,7 @@ export default function CreateLeaguePage() {
       setSubmitting(false);
       if (isSupabaseConfigured()) {
         setError(
-          "No se pudo crear la liga. Verifica que Supabase esté configurado y que los sign-in anónimos estén habilitados.",
+          "No se pudo crear la liga. Verifica que Supabase esté configurado y que la base de datos acepte la conexión.",
         );
       } else {
         setError(
