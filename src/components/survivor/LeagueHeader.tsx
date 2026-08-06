@@ -4,11 +4,10 @@ import {
   BookOpen,
   CircleDollarSign,
   History,
-  Shield,
   Swords,
   Users,
 } from "lucide-react";
-import { Badge } from "@/components/ui";
+import { Badge, FootballIcon } from "@/components/ui";
 import type { SurvivorStatus } from "@/types";
 import { formatPrizePool } from "@/lib/survivor-utils";
 import {
@@ -75,7 +74,7 @@ export function LeagueHeader({
         {/* League identity */}
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-primary flex items-center justify-center shadow-glow shrink-0">
-            <Shield className="w-6 h-6 text-white" />
+            <FootballIcon className="w-6 h-6 text-white" />
           </div>
           <div>
             <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-text-primary">

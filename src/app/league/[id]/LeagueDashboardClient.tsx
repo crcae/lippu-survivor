@@ -411,10 +411,14 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
     const teamId = pendingPickTeamId;
 
     if (isReal) {
-      if (!activeEntryId) return;
+      const entryId = activeEntryId || dbUserEntries[0]?.id;
+      if (!entryId) {
+        toastError("No tienes una entrada activa en esta liga para realizar un pick.");
+        return;
+      }
       try {
         // Persist to Supabase enforcing the lock + team rules.
-        await submitPickInDb(activeEntryId, week, teamId);
+        await submitPickInDb(entryId, week, teamId);
       } catch (err) {
         toastError(
           err instanceof Error
@@ -426,8 +430,11 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
       // Reflect the new pick locally so pick history updates immediately.
       setDbPicksByEntry((prev) => ({
         ...prev,
-        [activeEntryId]: { ...(prev[activeEntryId] ?? {}), [week]: teamId },
+        [entryId]: { ...(prev[entryId] ?? {}), [week]: teamId },
       }));
+      if (!activeEntryId) {
+        setActiveEntryId(entryId);
+      }
       success(`¡Selección guardada con éxito para la Semana ${week}!`);
     } else {
       success("¡Pick confirmado para la semana " + week + "!");

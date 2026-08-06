@@ -149,6 +149,7 @@ export interface LeagueEntry {
 export interface LeagueLookup {
   league: League;
   entryCount: number;
+  ownerName?: string;
 }
 
 export interface LeagueDashboardData {
@@ -202,6 +203,17 @@ function mapLeagueEntry(row: EntryRow): LeagueEntry {
 }
 
 function mapNflGame(row: NflGameRow): NFLGame {
+  const isInvalidDate = !row.start_time || Number.isNaN(new Date(row.start_time).getTime());
+  let startTime = row.start_time;
+  let isTbd = isInvalidDate;
+
+  if (row.week === 18 && (isInvalidDate || row.start_time?.includes("TBD"))) {
+    const janMonth = 0;
+    const year = (row.season_year || SEASON_YEAR) + 1;
+    startTime = new Date(Date.UTC(year, janMonth, 10, 18, 0, 0)).toISOString();
+    isTbd = true;
+  }
+
   return {
     id: row.id,
     week: row.week,
@@ -211,7 +223,8 @@ function mapNflGame(row: NflGameRow): NFLGame {
     homeScore: row.home_score ?? undefined,
     awayScore: row.away_score ?? undefined,
     status: row.status,
-    startTime: row.start_time,
+    startTime,
+    isTbd,
   };
 }
 
@@ -459,7 +472,7 @@ export async function getLeagueByInviteCode(
   const { data: leagueRow, error } = await supabase
     .from("leagues")
     .select("*")
-    .eq("invite_code", code.toUpperCase())
+    .eq("invite_code", code.trim().toUpperCase())
     .maybeSingle();
 
   if (error) throw error;
@@ -470,7 +483,21 @@ export async function getLeagueByInviteCode(
     .select("*", { count: "exact", head: true })
     .eq("league_id", leagueRow.id);
 
-  return { league: mapLeague(leagueRow), entryCount: count ?? 0 };
+  let ownerName = "Comisionado";
+  try {
+    const { data: profile } = await supabase
+      .from("profiles")
+      .select("display_name, email")
+      .eq("id", leagueRow.owner_id)
+      .maybeSingle();
+    if (profile) {
+      ownerName = profile.display_name || profile.email?.split("@")[0] || "Comisionado";
+    }
+  } catch {
+    // Best effort profile fetch
+  }
+
+  return { league: mapLeague(leagueRow), entryCount: count ?? 0, ownerName };
 }
 
 /**
@@ -786,6 +813,7 @@ export async function submitPickInDb(
     .eq("week", week)
     .eq("season_year", SEASON_YEAR)
     .gte("start_time", `${SEASON_YEAR}-01-01`)
+    .limit(1)
     .maybeSingle();
   if (gameError) throw gameError;
 

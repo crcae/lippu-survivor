@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, Shield, X } from "lucide-react";
+import { Menu, X } from "lucide-react";
+import { FootballIcon } from "@/components/ui";
 import { SEASON_YEAR } from "@/lib/mock-survivor-data";
+import { getCurrentUser, type CurrentUser } from "@/lib/services/survivor-db";
 
 const NAV_LINKS = [
   { href: "/league/demo", label: "Dashboard Demo" },
@@ -18,9 +20,28 @@ const linkClass =
 export function Navbar() {
   const pathname = usePathname();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [user, setUser] = useState<CurrentUser | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getCurrentUser()
+      .then((curr) => {
+        if (!cancelled) setUser(curr);
+      })
+      .catch(() => {
+        if (!cancelled) setUser(null);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const isActive = (href: string) =>
     pathname === href || pathname.startsWith(href);
+
+  const displayName = user?.displayName || user?.email?.split("@")[0] || "Jugador";
+  const avatarInitial = (displayName[0] || "J").toUpperCase();
 
   return (
     <header className="sticky top-0 z-40 border-b border-border/50 backdrop-blur-md bg-background/80">
@@ -28,7 +49,7 @@ export function Navbar() {
         {/* Brand */}
         <Link href="/" className="flex items-center gap-3 focus-ring rounded-xl">
           <span className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center shadow-glow shrink-0">
-            <Shield className="w-5 h-5 text-white" />
+            <FootballIcon className="w-5 h-5 text-white" />
           </span>
           <span className="text-lg font-bold tracking-tight text-text-primary whitespace-nowrap">
             Lippu <span className="text-primary">Survivor</span>{" "}
@@ -57,19 +78,18 @@ export function Navbar() {
 
         {/* User pill */}
         <div className="hidden md:flex items-center gap-3">
-          <button
-            type="button"
+          <div
             className="inline-flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-surface-elevated border border-border hover:border-primary/40 transition-all duration-200 focus-ring"
-            title="Perfil de usuario (demo)"
+            title={user?.email ? `Conectado como ${user.email}` : "Perfil de usuario"}
           >
             <span className="relative flex items-center justify-center w-8 h-8 rounded-full bg-primary/20 text-xs font-bold text-accent">
-              M
+              {avatarInitial}
               <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-success border-2 border-surface-elevated" />
             </span>
             <span className="text-sm font-semibold text-text-primary">
-              Matías
+              {displayName}
             </span>
-          </button>
+          </div>
         </div>
 
         {/* Mobile hamburger */}
@@ -103,16 +123,13 @@ export function Navbar() {
               </Link>
             ))}
             <div className="border-t border-border/50 my-2" />
-            <button
-              type="button"
-              className="inline-flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold text-text-primary"
-            >
+            <div className="inline-flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold text-text-primary">
               <span className="relative flex items-center justify-center w-8 h-8 rounded-full bg-primary/20 text-xs font-bold text-accent">
-                M
+                {avatarInitial}
                 <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-success border-2 border-surface" />
               </span>
-              Matías
-            </button>
+              {displayName}
+            </div>
           </div>
         </div>
       )}

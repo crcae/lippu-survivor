@@ -3,11 +3,11 @@ import {
   Calendar,
   ChevronRight,
   Play,
-  Shield,
   Trophy,
   Users,
   Zap,
 } from "lucide-react";
+import { FootballIcon } from "@/components/ui";
 import { SEASON_YEAR } from "@/lib/mock-survivor-data";
 
 export default function Home() {
@@ -179,7 +179,7 @@ export default function Home() {
           >
             <div className="bg-surface-elevated rounded-2xl border border-border p-8 text-center shadow-elevated">
               <div className="w-16 h-16 rounded-2xl bg-primary/20 flex items-center justify-center mx-auto mb-5 animate-float">
-                <Shield className="w-8 h-8 text-primary" />
+                <FootballIcon className="w-8 h-8 text-primary" />
               </div>
               <h2 className="text-2xl font-bold text-text-primary mb-3">
                 ¿Listo para la Temporada {SEASON_YEAR}?

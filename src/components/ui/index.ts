@@ -12,3 +12,7 @@ export type { ModalProps } from "./Modal";
 
 export { ToastProvider, useToast } from "./Toast";
 export type { ToastContextValue, ToastItem, ToastType } from "./Toast";
+
+export { FootballIcon } from "./FootballIcon";
+export type { FootballIconProps } from "./FootballIcon";
+

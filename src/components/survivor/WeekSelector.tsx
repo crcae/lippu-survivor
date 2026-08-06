@@ -28,7 +28,7 @@ export function WeekSelector({
   }, [currentWeek]);
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-3 w-full max-w-full overflow-hidden">
       <div className="flex items-center gap-2">
         <CalendarDays className="w-4 h-4 text-primary" />
         <h2 className="text-sm font-semibold uppercase tracking-wider text-text-secondary">
@@ -37,7 +37,7 @@ export function WeekSelector({
       </div>
 
       <div
-        className="flex gap-2 overflow-x-auto pb-2 scroll-smooth snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+        className="flex gap-2 overflow-x-auto pb-2 scroll-smooth snap-x snap-mandatory [scrollbar-width:none] [&::-webkit-scrollbar]:hidden w-full max-w-full"
         role="tablist"
         aria-label="Semanas NFL"
       >

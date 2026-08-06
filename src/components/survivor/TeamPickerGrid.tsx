@@ -68,6 +68,14 @@ function TeamGameInfo({
   game: NFLGame;
   now: number;
 }) {
+  if (game.isTbd) {
+    return (
+      <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full bg-warning/15 border border-warning/40 text-warning text-[9px] font-bold tracking-tight">
+        Horario por definir (TBD)
+      </span>
+    );
+  }
+
   if (game.status === "in_progress") {
     const score = formatScore(game);
     return (
@@ -130,7 +138,7 @@ export function TeamPickerGrid(props: TeamPickerGridProps) {
     games.every((game) => isLockedByTime(game, now));
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-4 w-full max-w-full overflow-x-hidden">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex flex-wrap items-center gap-3">
           <h2 className="text-sm font-semibold uppercase tracking-wider text-text-secondary">
@@ -170,7 +178,7 @@ export function TeamPickerGrid(props: TeamPickerGridProps) {
           </p>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 xl:grid-cols-8">
+        <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 xl:grid-cols-8 w-full max-w-full overflow-x-hidden">
           {games.flatMap((game) => {
             const homeTeamId = game.homeTeamId;
             const awayTeamId = game.awayTeamId;
@@ -178,6 +186,7 @@ export function TeamPickerGrid(props: TeamPickerGridProps) {
             return [homeTeamId, awayTeamId].map((teamId) => {
               const team = getTeam(teamId);
               const matchup = matchupForTeam(game, teamId);
+              const opponentTeam = getTeam(matchup.opponentId);
               const state = resolveCardState(teamId, game, props);
               const canClick =
                 state.label === "available" || state.label === "selected";
@@ -197,7 +206,7 @@ export function TeamPickerGrid(props: TeamPickerGridProps) {
                   title={tooltip}
                   onClick={() => onSelect(teamId)}
                   className={[
-                    "group relative flex flex-col items-center gap-2 rounded-2xl border p-3 text-center transition-all duration-200 focus-ring min-h-14",
+                    "group relative flex flex-col items-center gap-1.5 rounded-2xl border p-3 text-center transition-all duration-200 focus-ring min-h-[64px] touch-manipulation w-full overflow-hidden",
                     canClick && "active:scale-95",
                     state.label === "selected"
                       ? "border-accent bg-primary/20 ring-1 ring-accent shadow-glow"
@@ -208,9 +217,9 @@ export function TeamPickerGrid(props: TeamPickerGridProps) {
                           : "border-border bg-surface hover:border-accent/60 hover:bg-surface-elevated hover:-translate-y-0.5 hover:shadow-card cursor-pointer",
                   ].join(" ")}
                 >
-                  {/* Game date tag — clearly visible at the top of each matchup card */}
-                  <span className="w-full text-[10px] font-semibold leading-tight text-text-secondary tabular-nums">
-                    {formatFullGameDate(game.startTime)}
+                  {/* Game date tag */}
+                  <span className="w-full text-[10px] font-semibold leading-tight text-text-secondary tabular-nums truncate">
+                    {game.isTbd ? "TBD" : formatFullGameDate(game.startTime)}
                   </span>
 
                   {/* Status icon */}
@@ -225,7 +234,14 @@ export function TeamPickerGrid(props: TeamPickerGridProps) {
                     </span>
                   )}
 
-                  <TeamMark team={team} size="md" className="mt-1" />
+                  {/* High-res Home & Away Logos */}
+                  <div className="flex items-center justify-center gap-1 my-1">
+                    <TeamMark team={team} size="md" />
+                    <span className="text-[10px] font-black text-text-secondary">
+                      {matchup.isHome ? "VS" : "@"}
+                    </span>
+                    <TeamMark team={opponentTeam} size="xs" className="opacity-75" />
+                  </div>
 
                   <span
                     className={`text-xs font-bold leading-tight ${
@@ -236,18 +252,18 @@ export function TeamPickerGrid(props: TeamPickerGridProps) {
                   >
                     {team.abbreviation}
                   </span>
-                  <span className="text-[10px] leading-tight text-text-secondary -mt-2 line-clamp-1">
+                  <span className="text-[10px] leading-tight text-text-secondary -mt-1 line-clamp-1">
                     {team.city}
                   </span>
 
-                  <span className="text-xs font-semibold text-accent">
+                  <span className="text-[11px] font-semibold text-accent">
                     {formatMatchup(matchup)}
                   </span>
 
                   <TeamGameInfo game={game} now={now} />
 
                   {state.label === "selected" && (
-                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent/15 border border-accent/40 text-accent text-[10px] font-bold">
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-accent/15 border border-accent/40 text-accent text-[10px] font-bold mt-1">
                       <Check className="w-2.5 h-2.5" strokeWidth={3} />
                       Tu selección
                     </span>

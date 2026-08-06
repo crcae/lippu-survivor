@@ -1,6 +1,7 @@
 "use client";
 
-import { type LucideIcon, BookOpen, History, Shield, Trophy } from "lucide-react";
+import { BookOpen, History, Trophy } from "lucide-react";
+import { FootballIcon } from "@/components/ui";
 
 export type MobileNavTab = "pick" | "tabla" | "historial" | "reglas";
 
@@ -9,12 +10,12 @@ interface MobileNavProps {
   onSelect: (tab: MobileNavTab) => void;
 }
 
-const TABS: { id: MobileNavTab; label: string; icon: LucideIcon }[] = [
-  { id: "pick", label: "Pick", icon: Shield },
+const TABS = [
+  { id: "pick", label: "Pick", icon: FootballIcon },
   { id: "tabla", label: "Tabla", icon: Trophy },
   { id: "historial", label: "Historial", icon: History },
   { id: "reglas", label: "Reglas", icon: BookOpen },
-];
+] as const;
 
 export function MobileNav({ activeTab, onSelect }: MobileNavProps) {
   return (

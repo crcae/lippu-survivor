@@ -109,6 +109,17 @@ function scoreOf(competitor?: EspnCompetitor): number | undefined {
   return Number.isNaN(parsed) ? undefined : parsed;
 }
 
+/**
+ * Helper returning Sunday 13:00 EST of Week 18 (e.g. Jan 10, 2027 for 2026 season)
+ * as the standard fallback kickoff time when ESPN or DB dates are unconfirmed/TBD.
+ */
+export function getWeek18TbdKickoff(seasonYear = SEASON_YEAR): string {
+  const janMonth = 0; // January
+  const year = seasonYear + 1;
+  const d = new Date(Date.UTC(year, janMonth, 10, 18, 0, 0)); // 13:00 EST = 18:00 UTC
+  return d.toISOString();
+}
+
 /** Map a raw ESPN event to our `NFLGame` shape (or null if unmappable). */
 function mapEvent(event: EspnEvent, week: number, year: number): NFLGame | null {
   const competition = event.competitions?.[0];
@@ -125,6 +136,19 @@ function mapEvent(event: EspnEvent, week: number, year: number): NFLGame | null 
   const period = event.status?.period;
   const rawClock = event.status?.clock;
   const clock = rawClock !== undefined ? String(rawClock) : undefined;
+  const statusDetail = event.status?.type?.shortDetail ?? event.status?.type?.detail;
+
+  let rawDate = event.date;
+  const isInvalidDate = !rawDate || Number.isNaN(new Date(rawDate).getTime());
+  const isExplicitTbd = statusDetail?.toUpperCase().includes("TBD") || false;
+
+  let startTime = rawDate ?? new Date(0).toISOString();
+  let isTbd = isExplicitTbd || isInvalidDate;
+
+  if (week === 18 && (isInvalidDate || isExplicitTbd)) {
+    startTime = getWeek18TbdKickoff(year);
+    isTbd = true;
+  }
 
   return {
     id: event.id ?? `espn-${year}-w${week}-${homeTeamId}-${awayTeamId}`,
@@ -135,10 +159,11 @@ function mapEvent(event: EspnEvent, week: number, year: number): NFLGame | null 
     homeScore: scoreOf(home),
     awayScore: scoreOf(away),
     status,
-    startTime: event.date ?? new Date(0).toISOString(),
+    startTime,
     period,
     clock,
-    statusDetail: event.status?.type?.shortDetail ?? event.status?.type?.detail,
+    statusDetail,
+    isTbd,
   };
 }
 
@@ -160,11 +185,6 @@ export function buildMockGames(week: number, year = SEASON_YEAR): NFLGame[] {
   const DAY_MS = 86_400_000;
   const HOUR_MS = 3_600_000;
 
-  // Weeks before the simulated active window would otherwise anchor in the
-  // past (every kickoff already passed → fully locked slate). Re-anchor them
-  // just ahead of "now" so the fallback still offers all 32 teams selectable —
-  // that is what a fresh real league (default Week 1) sees until ESPN serves
-  // real schedule data.
   const anchor =
     week < ACTIVE_WEEK
       ? Date.now() + (ACTIVE_WEEK - week) * 7 * DAY_MS + 65 * HOUR_MS
@@ -175,15 +195,20 @@ export function buildMockGames(week: number, year = SEASON_YEAR): NFLGame[] {
 
   return matchups
     .filter((matchup) => matchup.isHome)
-    .map((matchup) => ({
-      id: `mock-${year}-w${week}-${matchup.teamId}-${matchup.opponentId}`,
-      week,
-      seasonYear: year,
-      homeTeamId: matchup.teamId,
-      awayTeamId: matchup.opponentId,
-      status: "scheduled" as const,
-      startTime: matchup.kickoffTime,
-    }));
+    .map((matchup) => {
+      const isWeek18 = week === 18;
+      const startTime = isWeek18 ? getWeek18TbdKickoff(year) : matchup.kickoffTime;
+      return {
+        id: `mock-${year}-w${week}-${matchup.teamId}-${matchup.opponentId}`,
+        week,
+        seasonYear: year,
+        homeTeamId: matchup.teamId,
+        awayTeamId: matchup.opponentId,
+        status: "scheduled" as const,
+        startTime,
+        isTbd: isWeek18,
+      };
+    });
 }
 
 async function fetchWithTimeout(

@@ -109,4 +109,6 @@ export interface NFLGame {
   period?: number;
   /** Raw ESPN status detail, e.g. "Q3 5:20", "Halftime", "Final". */
   statusDetail?: string;
+  /** True when kickoff time is unconfirmed / TBD (e.g. Week 18). */
+  isTbd?: boolean;
 }

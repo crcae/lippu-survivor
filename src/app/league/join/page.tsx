@@ -1,17 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   CheckCircle2,
   LogIn,
-  Shield,
   Ticket,
   Trophy,
   Users,
 } from "lucide-react";
-import { Badge, Button, Card, useToast } from "@/components/ui";
+import { Badge, Button, Card, FootballIcon, useToast } from "@/components/ui";
 import {
   getCurrentUser,
   getLeagueByInviteCode,
@@ -23,25 +22,6 @@ import {
   type TicketRedeemResult,
 } from "@/lib/services/survivor-db";
 import { formatMoney } from "@/lib/survivor-utils";
-
-function hashString(value: string): number {
-  let hash = 0;
-  for (let i = 0; i < value.length; i++) {
-    hash = (hash * 31 + value.charCodeAt(i)) >>> 0;
-  }
-  return hash;
-}
-
-const PREVIEW_LEAGUE_NAMES = [
-  "Survivor NFL Lippu 2026",
-  "Liga de los Sábados",
-  "Gridiron Kings",
-  "No More Sundays",
-  "Campeones del Norte",
-  "Liga Poker & Football",
-];
-
-const PREVIEW_OWNERS = ["Matías", "Andrea", "Luis", "Sara", "Carlos"];
 
 const inputClass =
   "w-full rounded-xl border border-border bg-surface px-4 py-3 text-center text-2xl font-mono font-bold tracking-[0.4em] uppercase text-primary placeholder:text-text-secondary/30 focus:border-primary/60 focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all duration-200";
@@ -61,25 +41,53 @@ export default function JoinLeaguePage() {
   const [error, setError] = useState<string | null>(null);
   const [ticketResult, setTicketResult] = useState<TicketRedeemResult | null>(null);
 
+  // Live Supabase invite code lookup state (no mock preview)
+  const [validatedLeague, setValidatedLeague] = useState<LeagueLookup | null>(null);
+  const [validating, setValidating] = useState(false);
+
   const value = code
     .toUpperCase()
     .replace(/[^A-Z0-9]/g, "")
     .slice(0, 6);
 
-  const preview = useMemo(() => {
-    if (value.length === 0) return null;
-    const h = hashString(value);
-    const players = 8 + (h % 42);
-    const prizePool = players * 50;
-    return {
-      name: PREVIEW_LEAGUE_NAMES[h % PREVIEW_LEAGUE_NAMES.length],
-      owner: PREVIEW_OWNERS[h % PREVIEW_OWNERS.length],
-      players,
-      prizePool,
-    };
-  }, [value]);
+  // Live lookup on Supabase leagues table by invite_code
+  useEffect(() => {
+    if (tab !== "invite") return;
+    if (value.length < 6) {
+      setValidatedLeague(null);
+      setError(null);
+      return;
+    }
 
-  const canSubmit = value.length === 6 && preview !== null;
+    let cancelled = false;
+    setValidating(true);
+    setError(null);
+
+    getLeagueByInviteCode(value)
+      .then((lookup) => {
+        if (cancelled) return;
+        setValidating(false);
+        if (lookup) {
+          setValidatedLeague(lookup);
+          setError(null);
+        } else {
+          setValidatedLeague(null);
+          setError("Código de invitación no encontrado");
+        }
+      })
+      .catch(() => {
+        if (cancelled) return;
+        setValidating(false);
+        setValidatedLeague(null);
+        setError("Código de invitación no encontrado");
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [value, tab]);
+
+  const canSubmit = value.length === 6 && validatedLeague !== null && !validating;
 
   const redeemTicket = useCallback(
     async (ticket: string) => {
@@ -151,67 +159,56 @@ export default function JoinLeaguePage() {
   }, []);
 
   const handleSubmit = async () => {
-    if (!canSubmit) {
-      setError("Ingresa un código de invitación válido de 6 caracteres.");
+    if (!canSubmit || !validatedLeague) {
+      setError("Código de invitación no encontrado");
       return;
     }
     setError(null);
     setSubmitting(true);
 
-    // Try the real Supabase flow; fall back to demo only when not configured.
     let user: CurrentUser | null = null;
-    let lookup: LeagueLookup | null | undefined;
     try {
       user = await getCurrentUser();
-      if (user) {
-        lookup = await getLeagueByInviteCode(value);
-      }
     } catch {
-      lookup = undefined;
+      user = null;
     }
 
-    if (user && lookup !== undefined) {
-      if (!lookup) {
-        setSubmitting(false);
-        setError("No encontramos una liga con ese código.");
-        return;
-      }
-      const capacity = lookup.league.capacity;
-      if (
-        capacity !== null &&
-        capacity !== undefined &&
-        lookup.entryCount >= capacity
-      ) {
-        setSubmitting(false);
-        setError("Esta liga ya está llena.");
-        return;
-      }
-
-      try {
-        await joinLeagueInDb(
-          lookup.league.id,
-          user.id,
-          entryName.trim() || "Entrada #1",
-        );
-        setSubmitting(false);
-        success("¡Te has unido a la liga!");
-        setTimeout(() => {
-          router.push(`/league/${lookup!.league.id}`);
-        }, 1100);
-        return;
-      } catch {
-        setSubmitting(false);
-        setError("No se pudo unir a la liga. Intenta de nuevo.");
-        return;
-      }
+    if (!user) {
+      setSubmitting(false);
+      setError("No se pudo iniciar sesión. Intenta de nuevo.");
+      return;
     }
 
-    // Demo fallback (only reached when Supabase is not configured).
-    setSubmitting(false);
-    success("¡Te has unido a la liga!");
-    setTimeout(() => {
-      router.push(`/league/${value.toLowerCase()}`);
-    }, 1100);
+    const capacity = validatedLeague.league.capacity;
+    if (
+      capacity !== null &&
+      capacity !== undefined &&
+      validatedLeague.entryCount >= capacity
+    ) {
+      setSubmitting(false);
+      setError("Esta liga ya está llena.");
+      return;
+    }
+
+    try {
+      await joinLeagueInDb(
+        validatedLeague.league.id,
+        user.id,
+        entryName.trim() || "Entrada #1",
+      );
+      setSubmitting(false);
+      success("¡Te has unido a la liga!");
+      setTimeout(() => {
+        router.push(`/league/${validatedLeague.league.id}`);
+      }, 1100);
+    } catch (err) {
+      setSubmitting(false);
+      setError(
+        err instanceof Error
+          ? err.message
+          : "No se pudo unir a la liga. Intenta de nuevo.",
+      );
+    }
   };
 
   return (
@@ -397,6 +394,11 @@ export default function JoinLeaguePage() {
                     El código tiene {value.length}/6 caracteres.
                   </p>
                 )}
+                {validating && (
+                  <p className="text-xs text-accent animate-pulse">
+                    Buscando liga en tiempo real…
+                  </p>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -417,40 +419,43 @@ export default function JoinLeaguePage() {
                 </p>
               </div>
 
-              {preview && (
+              {validatedLeague && (
                 <div className="rounded-2xl border border-accent/40 bg-primary/10 p-5 animate-fade-in-up">
                   <div className="flex items-center gap-2 mb-4">
-                    <Shield className="w-5 h-5 text-primary" />
+                    <FootballIcon className="w-5 h-5 text-primary" />
                     <p className="text-xs font-semibold uppercase tracking-wider text-accent">
-                      Vista previa de la liga
+                      Liga Encontrada
                     </p>
                   </div>
 
                   <p className="text-lg font-bold text-text-primary">
-                    {preview.name}
+                    {validatedLeague.league.name}
                   </p>
 
                   <div className="grid grid-cols-3 gap-3 mt-4">
                     <div className="rounded-xl bg-surface border border-border p-3 text-center">
                       <Users className="w-4 h-4 text-info mx-auto mb-1" />
                       <p className="text-base font-bold text-text-primary">
-                        {preview.players}
+                        {validatedLeague.entryCount}
                       </p>
                       <p className="text-[10px] text-text-secondary">Jugadores</p>
                     </div>
                     <div className="rounded-xl bg-surface border border-border p-3 text-center">
                       <Trophy className="w-4 h-4 text-warning mx-auto mb-1" />
                       <p className="text-base font-bold text-text-primary">
-                        {formatMoney(preview.prizePool)}
+                        {formatMoney(
+                          (validatedLeague.league.entryFee ?? 0) *
+                            (validatedLeague.entryCount || 1),
+                        )}
                       </p>
                       <p className="text-[10px] text-text-secondary">Premio Pool</p>
                     </div>
                     <div className="rounded-xl bg-surface border border-border p-3 text-center">
                       <span className="block w-4 h-4 mx-auto mb-1 text-primary">
-                        <Shield className="w-4 h-4" />
+                        <FootballIcon className="w-4 h-4" />
                       </span>
                       <p className="text-base font-bold text-text-primary truncate">
-                        {preview.owner}
+                        {validatedLeague.ownerName ?? "Comisionado"}
                       </p>
                       <p className="text-[10px] text-text-secondary">Comisionado</p>
                     </div>
