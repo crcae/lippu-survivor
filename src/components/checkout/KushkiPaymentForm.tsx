@@ -22,6 +22,18 @@ import { formatMxn } from "@/lib/survivor-utils";
 const KUSHKI_PUBLIC_MERCHANT_ID = "8b4407dc16954e949b77384573dd86b7";
 const KUSHKI_SDK_URL = "https://cdn.kushkipagos.com/kushki.min.js";
 
+// Kushki v2 SDK environment toggle: `NEXT_PUBLIC_KUSHKI_TEST_MODE=true` runs the
+// tokenizer against Kushki's test environment (defaults to live when unset).
+const IS_KUSHKI_TEST_MODE = process.env.NEXT_PUBLIC_KUSHKI_TEST_MODE === "true";
+
+// Development-only simulated charge: shown/honoured when not in production or
+// when `NEXT_PUBLIC_ENABLE_TEST_PAYMENTS=true` is explicitly set.
+const IS_TEST_PAYMENTS_ENABLED =
+  process.env.NODE_ENV !== "production" ||
+  process.env.NEXT_PUBLIC_ENABLE_TEST_PAYMENTS === "true";
+
+const SIMULATED_TEST_TOKEN = "SIMULATED_TEST_TOKEN";
+
 interface KushkiTokenResponse {
   code?: string | null;
   message?: string;
@@ -50,10 +62,10 @@ interface KushkiInstance {
 
 declare global {
   interface Window {
-    Kushki?: new (
-      merchantId: string,
-      options: { inTestEnvironment: boolean },
-    ) => KushkiInstance;
+    Kushki?: new (options: {
+      merchantId: string;
+      inTestEnvironment: boolean;
+    }) => KushkiInstance;
     ApplePaySession?: {
       supportsVersion: (version: number) => boolean;
     };
@@ -192,6 +204,56 @@ export function KushkiPaymentForm({
     setProcessing(false);
   };
 
+  // Sends a charge request (real Kushki token or simulated test token) to the
+  // server and maps the response into the form status screens.
+  const submitCharge = async (token: string) => {
+    setProcessing(true);
+    setStatus("idle");
+    setMessage("");
+
+    try {
+      const res = await fetch("/api/payments/kushki/charge", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          token,
+          leagueId,
+          userId,
+          userEmail,
+          userName,
+          entryName,
+        }),
+      });
+      const data = await res.json();
+      setProcessing(false);
+
+      if (data?.success) {
+        setTicketNumber(data.ticketNumber ?? null);
+        setStatus("success");
+        onSuccess?.({
+          ticketNumber: data.ticketNumber ?? "",
+          entryId: data.entryId ?? "",
+        });
+      } else {
+        setStatus("error");
+        setMessage(
+          data?.message ?? "Tu pago no fue aprobado. Intenta de nuevo.",
+        );
+      }
+    } catch {
+      setProcessing(false);
+      setStatus("error");
+      setMessage(
+        "Ocurrió un error al procesar tu pago. Intenta de nuevo.",
+      );
+    }
+  };
+
+  // Dev-only: grants the entry through the backend bypass without a real charge.
+  const handleSimulateTestPayment = () => {
+    submitCharge(SIMULATED_TEST_TOKEN);
+  };
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     if (processing) return;
@@ -203,18 +265,18 @@ export function KushkiPaymentForm({
       return;
     }
 
-    setProcessing(true);
-    setStatus("idle");
-    setMessage("");
-
     try {
       const ready = sdkReady === null ? await loadKushkiScript() : sdkReady;
       if (!ready || !window.Kushki) {
         throw new Error("No se pudo cargar el módulo de pago seguro.");
       }
 
-      const kushki = new window.Kushki(KUSHKI_PUBLIC_MERCHANT_ID, {
-        inTestEnvironment: false,
+      // Kushki v2 constructor takes a single options object — passing the
+      // merchant id as a bare string first argument throws
+      // "Cannot create property 'inTestEnvironment' on string".
+      const kushki = new window.Kushki({
+        merchantId: KUSHKI_PUBLIC_MERCHANT_ID,
+        inTestEnvironment: IS_KUSHKI_TEST_MODE,
       });
       const [month, year2] = expiry.split("/");
       const totalCentavos = String(Math.round(totalAmount * 100));
@@ -243,43 +305,7 @@ export function KushkiPaymentForm({
             return;
           }
 
-          try {
-            const res = await fetch("/api/payments/kushki/charge", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                token: response.token,
-                leagueId,
-                userId,
-                userEmail,
-                userName,
-                entryName,
-              }),
-            });
-            const data = await res.json();
-            setProcessing(false);
-
-            if (data?.success) {
-              setTicketNumber(data.ticketNumber ?? null);
-              setStatus("success");
-              onSuccess?.({
-                ticketNumber: data.ticketNumber ?? "",
-                entryId: data.entryId ?? "",
-              });
-            } else {
-              setStatus("error");
-              setMessage(
-                data?.message ??
-                  "Tu pago no fue aprobado. Intenta de nuevo.",
-              );
-            }
-          } catch {
-            setProcessing(false);
-            setStatus("error");
-            setMessage(
-              "Ocurrió un error al procesar tu pago. Intenta de nuevo.",
-            );
-          }
+          await submitCharge(response.token);
         },
       );
     } catch (err) {
@@ -508,6 +534,17 @@ export function KushkiPaymentForm({
       >
         Pagar {formatMxn(totalAmount)}
       </Button>
+
+      {IS_TEST_PAYMENTS_ENABLED && (
+        <button
+          type="button"
+          onClick={handleSimulateTestPayment}
+          disabled={processing}
+          className="w-full inline-flex items-center justify-center gap-2 rounded-xl border border-dashed border-accent/50 bg-accent/5 px-4 py-2.5 text-xs font-semibold text-accent hover:bg-accent/10 transition-colors duration-200 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          🧪 Simular Pago Exitoso (Modo Pruebas)
+        </button>
+      )}
 
       <div className="flex items-center justify-center gap-1.5">
         <ShieldCheck className="w-3.5 h-3.5 text-success" />
