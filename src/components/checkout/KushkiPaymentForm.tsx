@@ -254,6 +254,9 @@ export function KushkiPaymentForm({
       return;
     }
 
+    // Instant feedback: lock the button immediately, before tokenization.
+    setProcessing(true);
+
     try {
       const ready = sdkReady === null ? await loadKushkiScript() : sdkReady;
       if (!ready || !window.Kushki) {
@@ -517,11 +520,13 @@ export function KushkiPaymentForm({
         type="submit"
         variant="primary"
         size="lg"
-        className="w-full"
+        className={`w-full ${processing ? "animate-pulse-glow" : ""}`}
         isLoading={processing}
         disabled={processing}
       >
-        Pagar {formatMxn(totalAmount)}
+        {processing
+          ? "Procesando pago seguro..."
+          : `Pagar ${formatMxn(totalAmount)}`}
       </Button>
 
       <div className="flex items-center justify-center gap-1.5">
@@ -531,19 +536,7 @@ export function KushkiPaymentForm({
         </p>
       </div>
 
-      {/* Support footer */}
-      <div className="pt-3 border-t border-border">
-        <a
-          href="https://wa.me/523322547372?text=Hola%21%20Tengo%20una%20consulta%20sobre%20Lippu%20Survivor"
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-xs text-purple-400 hover:underline flex items-center justify-center gap-1 transition-colors"
-        >
-          💬 Contactar Soporte por WhatsApp
-        </a>
-      </div>
-
-      {/* Apple Pay maintenance notice — top layer so it sits above all backdrops */}
+      {/* Apple Pay notice — top layer so it sits above all backdrops */}
       {applePayNotice && (
         <div
           className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in"
@@ -559,12 +552,12 @@ export function KushkiPaymentForm({
               id="apple-pay-notice-title"
               className="text-lg font-bold text-text-primary"
             >
-              Apple Pay en Mantenimiento
+              Próximamente Apple Pay 🚀
             </h3>
             <p className="text-sm text-text-secondary mt-2 leading-relaxed">
-              Estamos finalizando la verificación de Apple Pay para
-              survivor.lippu.app. Por favor, completa tu pago con Tarjeta de
-              Crédito o Débito por ahora.
+              Estamos trabajando en esta nueva función para darte la mejor
+              experiencia de pago. Por ahora, puedes completar tu registro de
+              forma rápida y segura con cualquier tarjeta de crédito o débito.
             </p>
             <Button
               variant="primary"

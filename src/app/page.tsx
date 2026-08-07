@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   ChevronRight,
   Crown,
+  MessageCircle,
   Search,
   SearchX,
   Trophy,
@@ -214,6 +215,30 @@ export default function Home() {
               ))}
             </div>
           )}
+        </section>
+
+        {/* ── Custom league CTA ── */}
+        <section className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pb-16">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 rounded-xl bg-surface/50 border border-purple-500/20 p-6 hover:border-purple-500/40 transition-all duration-200">
+            <div className="flex items-start gap-3.5 min-w-0">
+              <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center shrink-0">
+                <MessageCircle className="w-5 h-5 text-accent" />
+              </div>
+              <p className="text-sm text-text-secondary leading-relaxed max-w-xl">
+                ¿Quieres organizar una liga privada o personalizada para tu
+                grupo de amigos o empresa?
+              </p>
+            </div>
+            <a
+              href="https://wa.me/523322547372?text=Hola%21%20Me%20interesa%20crear%20una%20liga%20personalizada%20en%20Lippu%20Survivor"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1.5 text-sm font-semibold text-accent hover:underline shrink-0 transition-colors"
+            >
+              Contáctanos por WhatsApp
+              <ChevronRight className="w-4 h-4" />
+            </a>
+          </div>
         </section>
 
         {/* ── Why play ── */}
