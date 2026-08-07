@@ -26,8 +26,13 @@ export function HeroSection() {
       <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 sm:pt-24 pb-12 sm:pb-16 text-center">
         {/* Micro-badge */}
         <div className="flex justify-center mb-8 animate-fade-in-up">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/30 text-xs text-accent">
-            🏆 NFL Survivor Pool — Temporada {SEASON_YEAR}
+          <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-primary/10 border border-primary/30 text-xs text-accent">
+            <img
+              src="/lippu-survivor-favicon.png"
+              alt="Lippu"
+              className="w-4 h-4 rounded-md object-contain inline-block mr-2 align-middle"
+            />
+            NFL Survivor Pool — Temporada {SEASON_YEAR}
           </div>
         </div>
 

@@ -57,7 +57,11 @@ export const metadata: Metadata = {
     description: "NFL Survivor Pool — Crea tu liga o únete a ligas públicas.",
     images: ["/lippu-survivor-og-graph-image.png"],
   },
-  /* icons auto-detected from src/app/icon.png + apple-icon.png */
+  icons: {
+    icon: "/lippu-survivor-favicon.png",
+    shortcut: "/lippu-survivor-favicon.png",
+    apple: "/lippu-survivor-favicon.png",
+  },
 };
 
 export const viewport: Viewport = {

@@ -59,16 +59,24 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/80">
       <nav className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-        {/* Brand — "Vibra Lippu" typography-only wordmark */}
+        {/* Brand — app icon badge + "Lippu Survivor 2026" wordmark */}
         <Link
           href="/"
           className="flex items-center gap-2.5 focus-ring rounded-xl"
+          aria-label="Lippu Survivor — Inicio"
         >
+          <span className="w-8 h-8 rounded-xl bg-white/5 border border-white/10 p-1 flex items-center justify-center shrink-0 shadow-sm overflow-hidden">
+            <img
+              src="/lippu-survivor-favicon.png"
+              alt="Lippu Icon"
+              className="w-full h-full object-contain"
+            />
+          </span>
           <span className="flex items-center gap-2 whitespace-nowrap">
-            <span className="text-lg font-bold tracking-tight text-white">
+            <span className="font-bold text-lg tracking-tight text-white">
               Lippu <span className="text-purple-400 font-normal">Survivor</span>
             </span>
-            <span className="ml-2 px-2 py-0.5 text-[10px] font-medium tracking-wide rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/20">
+            <span className="px-2 py-0.5 text-xs font-mono tracking-wide rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/20">
               2026
             </span>
           </span>
