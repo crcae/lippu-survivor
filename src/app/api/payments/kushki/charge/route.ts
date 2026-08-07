@@ -22,9 +22,11 @@ export const runtime = "nodejs";
  * }
  *
  * On approval: creates the `payments` row (approved) + the user's `entries`
- * row, and returns `{ success: true, ticketNumber, entryId }`. On decline: the
- * `payments` row is stored with status 'declined' and the gateway message is
- * returned to the UI.
+ * row, and returns `{ success: true, ticketNumber, entryId, paymentId }`.
+ * Persistence is strict — if the entry or payment write fails after a
+ * successful charge, a diagnostic (`ENTRY_WRITE_FAILED` / `DB_WRITE_FAILED`)
+ * is returned instead of a false success. On decline: the `payments` row is
+ * stored with status 'declined' and the gateway message is returned to the UI.
  *
  * Every request is charged live through Kushki. Tokens that do not match the
  * expected Kushki token format are rejected with a 400 before any charge.
@@ -328,7 +330,10 @@ export async function POST(request: Request) {
     return NextResponse.json({ success: false, message }, { status: 200 });
   }
 
-  // Approved: register the entry first, then persist the payment record.
+  // Approved: register the entry first, then persist the payment record. Both
+  // writes use the service-role admin client (RLS bypass). They are STRICT: a
+  // failed write after a successful charge must never look like success, or
+  // users would pay without a registered entry or payment row.
   let entryId: string;
   try {
     entryId = await createPaidEntry(admin, league, userId, entryName ?? "Entrada #1");
@@ -337,6 +342,8 @@ export async function POST(request: Request) {
     return NextResponse.json(
       {
         success: false,
+        code: "ENTRY_WRITE_FAILED",
+        provider_ticket: ticketNumber,
         message:
           err instanceof Error
             ? err.message
@@ -346,8 +353,9 @@ export async function POST(request: Request) {
     );
   }
 
-  try {
-    await admin.from("payments").insert({
+  const { data: paymentRow, error: paymentError } = await admin
+    .from("payments")
+    .insert({
       league_id: leagueId,
       user_id: userId,
       entry_id: entryId,
@@ -357,13 +365,63 @@ export async function POST(request: Request) {
       currency: CURRENCY,
       kushki_ticket_number: ticketNumber,
       status: "approved",
-    });
+    })
+    .select("id")
+    .single();
+
+  if (paymentError || !paymentRow) {
+    console.error(
+      "[CRITICAL DB ERROR] Cargo aprobado por Kushki pero el pago NO se guardó en Supabase:",
+      paymentError,
+      { leagueId, userId, ticketNumber, totalAmount },
+    );
+    return NextResponse.json(
+      {
+        success: false,
+        code: "DB_WRITE_FAILED",
+        provider_ticket: ticketNumber,
+        message:
+          "Tu pago fue aprobado, pero no pudimos guardarlo. Guarda este número de ticket y contacta soporte: " +
+          ticketNumber,
+      },
+      { status: 500 },
+    );
+  }
+
+  // Best-effort reconciliation for spec tables that may exist on this DB:
+  // `leagues.bolsa_total` and `league_participants`. The canonical participant
+  // record and prize pool live in `entries` (computed dynamically across every
+  // view), so a missing table/column here is expected on older databases and
+  // must never fail the payment.
+  try {
+    const { count: activeCount } = await admin
+      .from("entries")
+      .select("*", { count: "exact", head: true })
+      .eq("league_id", leagueId)
+      .eq("status", "alive");
+    const bolsaTotal = Number(league.entry_fee ?? 0) * (activeCount ?? 1);
+    await admin.from("leagues").update({ bolsa_total: bolsaTotal }).eq("id", leagueId);
   } catch (err) {
-    console.error("[kushki/charge] No se pudo guardar el pago aprobado:", err);
+    console.warn("[kushki/charge] No se pudo sincronizar leagues.bolsa_total:", err);
+  }
+
+  try {
+    await admin.from("league_participants").upsert(
+      {
+        league_id: leagueId,
+        user_id: userId,
+        payment_id: paymentRow.id,
+        status: "active",
+        joined_at: new Date().toISOString(),
+      },
+      { onConflict: "league_id,user_id" },
+    );
+  } catch (err) {
+    console.warn("[kushki/charge] No se pudo sincronizar league_participants:", err);
   }
 
   return NextResponse.json(
-    { success: true, ticketNumber, entryId },
+    { success: true, ticketNumber, entryId, paymentId: paymentRow.id },
     { status: 200 },
   );
 }

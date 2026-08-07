@@ -129,6 +129,14 @@ begin
       add column league_type text not null default 'free'
       check (league_type in ('paid', 'free'));
   end if;
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'leagues'
+      and column_name = 'bolsa_total'
+  ) then
+    alter table public.leagues
+      add column bolsa_total numeric(10, 2) not null default 0;
+  end if;
 end
 $$;
 
@@ -263,6 +271,27 @@ create index idx_payments_status on public.payments (status);
 create trigger trg_payments_updated_at
   before update on public.payments
   for each row execute function set_updated_at();
+
+-- ── League Participants ─────────────────────────────────────────────────────
+-- Explicit participant mirror used by the payment flow to reconcile who paid.
+-- The canonical participant record is `entries` (drives entry counts, the
+-- prize pool and eliminations everywhere in the app); this table exists so
+-- databases can model paid participants directly. Writes from
+-- `/api/payments/kushki/charge` are best-effort and safe on databases that
+-- omit this table.
+
+create table public.league_participants (
+  id         uuid primary key default uuid_generate_v4(),
+  league_id  uuid not null references public.leagues (id) on delete cascade,
+  user_id    uuid not null references public.profiles (id) on delete cascade,
+  payment_id uuid references public.payments (id) on delete set null,
+  status     text not null default 'active',
+  joined_at  timestamptz not null default now(),
+  unique (league_id, user_id)
+);
+
+create index idx_league_participants_league on public.league_participants (league_id);
+create index idx_league_participants_user on public.league_participants (user_id);
 
 -- ── Commissioner Payout Details ─────────────────────────────────────────────
 -- Bank information the league commissioner saves so Lippu can liquidate the
