@@ -4,7 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   ChevronRight,
-  Compass,
   Crown,
   Search,
   SearchX,
@@ -12,7 +11,8 @@ import {
   Users,
   Wallet,
 } from "lucide-react";
-import { Badge, FootballIcon } from "@/components/ui";
+import { Badge } from "@/components/ui";
+import { HeroSection } from "@/components/home/HeroSection";
 import { SEASON_YEAR } from "@/lib/mock-survivor-data";
 import {
   getPublicLeaguesInDb,
@@ -76,48 +76,7 @@ export default function Home() {
 
       {/* ── Hero Section ── */}
       <main className="relative z-10 flex-1">
-        <section className="max-w-6xl mx-auto px-6 pt-16 pb-12">
-          <div className="flex justify-center mb-8 animate-fade-in-up">
-            <span className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-surface-elevated border border-border text-sm text-accent font-medium">
-              <FootballIcon className="w-4 h-4 text-primary" />
-              NFL Survivor Pool — Temporada {SEASON_YEAR}
-            </span>
-          </div>
-
-          <div className="text-center max-w-3xl mx-auto animate-fade-in-up" style={{ animationDelay: "0.1s" }}>
-            <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold leading-tight tracking-tight mb-6">
-              Lippu{" "}
-              <span className="text-transparent bg-clip-text bg-gradient-to-r from-primary via-accent to-primary">
-                Survivor
-              </span>{" "}
-              {SEASON_YEAR}
-            </h1>
-            <p className="text-lg sm:text-xl text-text-secondary max-w-2xl mx-auto leading-relaxed">
-              Crea tu liga privada o únete a ligas públicas. Sobrevive cada
-              semana y llévate la bolsa acumulada.
-            </p>
-          </div>
-
-          <div
-            className="flex flex-wrap justify-center gap-4 mt-10 animate-fade-in-up"
-            style={{ animationDelay: "0.2s" }}
-          >
-            <Link
-              href="/create-league"
-              className="group inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-primary text-white font-semibold text-base hover:bg-primary-hover shadow-glow hover:shadow-glow-lg transition-all duration-300 focus-ring"
-            >
-              Crear mi Liga
-              <ChevronRight className="w-4 h-4 transition-transform group-hover:translate-x-0.5" />
-            </Link>
-            <a
-              href="#public-leagues"
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-xl bg-secondary text-white font-semibold text-base hover:bg-secondary-hover border border-border hover:border-border-hover transition-all duration-300 focus-ring"
-            >
-              <Compass className="w-4 h-4" />
-              Explorar Ligas
-            </a>
-          </div>
-        </section>
+        <HeroSection />
 
         {/* ── Public Leagues ── */}
         <section id="public-leagues" className="max-w-6xl mx-auto px-6 pb-24 scroll-mt-24">

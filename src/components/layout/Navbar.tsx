@@ -4,7 +4,6 @@ import { useRef, useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ChevronDown, LogOut, Menu, UserRound, X } from "lucide-react";
-import { FootballIcon } from "@/components/ui";
 import { MyLeaguesDropdown } from "@/components/navigation/MyLeaguesDropdown";
 import { useAuth } from "@/context/AuthContext";
 
@@ -60,19 +59,16 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/80">
       <nav className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-        {/* Brand */}
+        {/* Brand — typography-only wordmark */}
         <Link
           href="/"
           className="flex items-center gap-2.5 focus-ring rounded-xl"
         >
-          <span className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center shadow-glow shrink-0">
-            <FootballIcon className="w-5 h-5 text-white" />
-          </span>
           <span className="flex items-center gap-2 whitespace-nowrap">
             <span className="text-lg font-black tracking-tight bg-gradient-to-r from-white via-white to-primary bg-clip-text text-transparent">
               LIPPU SURVIVOR
             </span>
-            <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <span className="px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
               2026
             </span>
           </span>

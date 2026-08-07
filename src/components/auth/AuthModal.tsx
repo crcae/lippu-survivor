@@ -4,6 +4,7 @@ import { useState, type FormEvent } from "react";
 import { AlertCircle, CheckCircle2, Eye, EyeOff, Mail } from "lucide-react";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { Button, Modal } from "@/components/ui";
+import { APP_BASE_URL } from "@/lib/survivor-utils";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -16,6 +17,18 @@ type LoadingState = "google" | "email" | null;
 
 const inputClass =
   "w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm text-text-primary placeholder:text-text-secondary/50 focus:border-primary/60 focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all duration-200";
+
+/**
+ * Builds the `/auth/callback` URL for OAuth/email redirects, preserving a
+ * `next` param so the user lands back where they were after the session code
+ * is exchanged. Uses the canonical production origin as a server-side
+ * fallback (never `localhost`).
+ */
+function authCallbackUrl(next: string): string {
+  const base =
+    typeof window !== "undefined" ? window.location.origin : APP_BASE_URL;
+  return `${base}/auth/callback?next=${encodeURIComponent(next)}`;
+}
 
 function GoogleIcon() {
   return (
@@ -73,10 +86,17 @@ export function AuthModal({ isOpen, onClose, supabase }: AuthModalProps) {
     setInfo(null);
     setLoading("google");
     try {
+      // Send the user back to the OAuth provider, then land on /auth/callback
+      // with the `next` param preserved so they return to the page they were on.
+      const redirectUrl = authCallbackUrl(
+        typeof window !== "undefined"
+          ? window.location.pathname + window.location.search
+          : "/",
+      );
       const { error: authError } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
-          redirectTo: window.location.href,
+          redirectTo: redirectUrl,
         },
       });
       if (authError) setError(authError.message);
@@ -123,7 +143,7 @@ export function AuthModal({ isOpen, onClose, supabase }: AuthModalProps) {
           password,
           options: {
             data: { display_name: displayName.trim() || null },
-            emailRedirectTo: window.location.href,
+            emailRedirectTo: authCallbackUrl("/my-leagues"),
           },
         });
         if (authError) {
@@ -160,7 +180,7 @@ export function AuthModal({ isOpen, onClose, supabase }: AuthModalProps) {
     try {
       const { error: authError } = await supabase.auth.resetPasswordForEmail(
         email.trim(),
-        { redirectTo: window.location.href },
+        { redirectTo: authCallbackUrl("/") },
       );
       if (authError) {
         setError(authError.message);
