@@ -61,6 +61,7 @@ interface LeagueRow {
   league_type: "paid" | "free";
   invite_code: string;
   status: League["status"];
+  bolsa_total?: number | string | null;
   created_at: string;
   updated_at: string;
 }
@@ -198,6 +199,7 @@ function mapLeague(row: LeagueRow): League {
     leagueType: row.league_type === "paid" ? "paid" : "free",
     isPublic: row.is_public ?? true,
     platformFeePercent: Number(row.platform_fee_percent ?? 8),
+    bolsaTotal: Number(row.bolsa_total ?? 0),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
   };
@@ -623,6 +625,8 @@ export interface PublicLeague {
   activeParticipants: number;
   /** `entry_fee * active_entries_count`. */
   totalPot: number;
+  /** Prize pool stored on the league record (kept in sync with payments). */
+  bolsaTotal?: number;
 }
 
 interface PublicLeagueRow {
@@ -631,6 +635,7 @@ interface PublicLeagueRow {
   league_type: "paid" | "free";
   entry_fee: number | string;
   platform_fee_percent: number | string;
+  bolsa_total?: number | string | null;
 }
 
 /**
@@ -676,6 +681,7 @@ export async function getPublicLeaguesInDb(): Promise<PublicLeague[]> {
       platformFeePercent: Number(row.platform_fee_percent ?? 8),
       activeParticipants,
       totalPot: Math.round(entryFee * activeParticipants),
+      bolsaTotal: Number(row.bolsa_total ?? 0) || undefined,
     };
   });
 }
@@ -1061,6 +1067,8 @@ export interface EnrolledLeague {
   totalEntries: number;
   /** Entries still alive in the league. */
   remainingEntries: number;
+  /** Prize pool stored on the league record. */
+  bolsaTotal?: number;
   /** How many entries this user has in the league. */
   userEntriesCount: number;
 }
@@ -1173,6 +1181,7 @@ export async function getUserEnrolledLeaguesInDb(
       currentWeekPick: pickByEntry.get(representative.id),
       totalEntries: totalByLeague.get(league.id) ?? 0,
       remainingEntries: aliveByLeague.get(league.id) ?? 0,
+      bolsaTotal: league.bolsaTotal,
       userEntriesCount: userCountByLeague.get(league.id) ?? 0,
     });
   }
@@ -1253,6 +1262,7 @@ export async function getUserCommissionedLeaguesInDb(
       currentWeekPick: undefined,
       totalEntries: totalByLeague.get(league.id) ?? 0,
       remainingEntries: aliveByLeague.get(league.id) ?? 0,
+      bolsaTotal: league.bolsaTotal,
       userEntriesCount: 0,
     });
   }

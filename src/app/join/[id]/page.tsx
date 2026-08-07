@@ -368,7 +368,12 @@ export default function JoinLeaguePreviewPage() {
                 <p className="text-sm text-text-secondary">
                   La bolsa total es de{" "}
                   <span className="font-bold text-warning">
-                    {formatMxn((league.entryFee ?? 0) * preview.activeParticipants)}
+                    {formatMxn(
+                      Math.max(
+                        (league.entryFee ?? 0) * Math.max(preview.activeParticipants, 1),
+                        0,
+                      ),
+                    )}
                   </span>{" "}
                   y crece con cada jugador que se une.
                 </p>

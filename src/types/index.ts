@@ -37,6 +37,8 @@ export interface League {
   isPublic?: boolean;
   /** Platform fee charged per entry (e.g. 8 = 8%). */
   platformFeePercent?: number;
+  /** Prize pool stored on the league record (kept in sync with payments). */
+  bolsaTotal?: number;
   createdAt: string;
   updatedAt: string;
 }

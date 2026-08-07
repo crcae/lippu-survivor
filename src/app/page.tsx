@@ -208,7 +208,12 @@ export default function Home() {
                       <Trophy className="w-4 h-4 text-accent mb-1" />
                       <p className="text-xs text-text-secondary">Bolsa total</p>
                       <p className="text-sm font-bold text-text-primary truncate">
-                        {formatMxn(league.totalPot)}
+                        {formatMxn(
+                          Math.max(
+                            Number(league.bolsaTotal ?? 0),
+                            (league.activeParticipants || 1) * (league.entryFee || 0),
+                          ),
+                        )}
                       </p>
                     </div>
                   </div>

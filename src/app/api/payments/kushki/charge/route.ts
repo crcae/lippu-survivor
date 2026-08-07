@@ -440,8 +440,8 @@ export async function POST(request: Request) {
   };
 
   const primaryPayload = {
-    user_id: userId,
-    league_id: leagueId,
+    user_id: String(userId),
+    league_id: String(leagueId),
     amount: Number(totalAmount.toFixed(2)),
     entry_fee: Number(ticketAmount.toFixed(2)),
     service_fee: Number(serviceFee.toFixed(2)),
@@ -451,20 +451,19 @@ export async function POST(request: Request) {
   };
 
   let paymentId: string | null = null;
+  let dbWriteWarning: string | null = null;
+
   const primary = await insertPayment("PRIMARY", primaryPayload);
   if (primary.ok) {
     paymentId = primary.id;
     console.log(
-      `[PAYMENT SUCCESSFULLY SAVED TO SUPABASE] payments.id=${primary.id} ticket=${ticketId} status=completed shape=amount/entry_fee/service_fee/ticket/provider`,
+      `[SUPABASE PAYMENT SAVED SUCCESS] ${JSON.stringify(primary)} ticket=${ticketId}`,
     );
   } else {
-    console.error(
-      "[CRITICAL DB INSERT FAILED] shape=primary(amount/entry_fee/service_fee/ticket/provider):",
-      primary.error,
-    );
+    console.error("DATABASE PAYMENTS INSERT FAILED:", primary.error);
     const fallbackPayload = {
-      league_id: leagueId,
-      user_id: userId,
+      league_id: String(leagueId),
+      user_id: String(userId),
       entry_id: entryId ?? undefined,
       ticket_amount: ticketAmount,
       platform_fee_amount: serviceFee,
@@ -477,13 +476,26 @@ export async function POST(request: Request) {
     if (fallback.ok) {
       paymentId = fallback.id;
       console.log(
-        `[PAYMENT SUCCESSFULLY SAVED TO SUPABASE] payments.id=${fallback.id} ticket=${ticketId} status=completed shape=ticket_amount/platform_fee_amount/total_paid/kushki_ticket_number`,
+        `[SUPABASE PAYMENT SAVED SUCCESS] ${JSON.stringify(fallback)} ticket=${ticketId} shape=legacy`,
       );
     } else {
-      console.error(
-        "[CRITICAL DB INSERT FAILED] shape=fallback(ticket_amount/platform_fee_amount/total_paid/kushki_ticket_number):",
-        fallback.error,
-      );
+      console.error("DATABASE PAYMENTS INSERT FAILED (legacy shape):", fallback.error);
+      // Last-resort: minimal required fields only.
+      const minimal = await insertPayment("MINIMAL", {
+        user_id: String(userId),
+        league_id: String(leagueId),
+        amount: Number(totalAmount.toFixed(2)),
+        status: "completed",
+      });
+      if (minimal.ok) {
+        paymentId = minimal.id;
+        console.log(
+          `[SUPABASE PAYMENT SAVED SUCCESS] ${JSON.stringify(minimal)} ticket=${ticketId} shape=minimal`,
+        );
+      } else {
+        console.error("DATABASE PAYMENTS INSERT FAILED (minimal fields):", minimal.error);
+        dbWriteWarning = "payments_insert_failed";
+      }
     }
   }
 
@@ -491,8 +503,8 @@ export async function POST(request: Request) {
   try {
     const lp = await supabaseAdmin.from("league_participants").upsert(
       {
-        league_id: leagueId,
-        user_id: userId,
+        league_id: String(leagueId),
+        user_id: String(userId),
         payment_id: paymentId ?? undefined,
         status: "active",
         joined_at: new Date().toISOString(),
@@ -520,7 +532,7 @@ export async function POST(request: Request) {
     const lp = await supabaseAdmin
       .from("league_participants")
       .select("*", { count: "exact", head: true })
-      .eq("league_id", leagueId)
+      .eq("league_id", String(leagueId))
       .eq("status", "active");
     let activeCount: number | null = lp.error ? null : (lp.count ?? null);
     if (lp.error) {
@@ -533,7 +545,7 @@ export async function POST(request: Request) {
       const en = await supabaseAdmin
         .from("entries")
         .select("*", { count: "exact", head: true })
-        .eq("league_id", leagueId)
+        .eq("league_id", String(leagueId))
         .eq("status", "alive");
       activeCount = en.count ?? 1;
     }
@@ -541,7 +553,7 @@ export async function POST(request: Request) {
     const up = await supabaseAdmin
       .from("leagues")
       .update({ bolsa_total: newBolsaTotal })
-      .eq("id", leagueId);
+      .eq("id", String(leagueId));
     if (up.error) {
       console.error(
         "[CRITICAL DB ERROR] No se pudo actualizar leagues.bolsa_total:",
@@ -565,6 +577,7 @@ export async function POST(request: Request) {
       entryId: entryId ?? undefined,
       paymentId: paymentId ?? undefined,
       bolsa_total: newBolsaTotal,
+      dbWriteWarning: dbWriteWarning ?? undefined,
     },
     { status: 200 },
   );

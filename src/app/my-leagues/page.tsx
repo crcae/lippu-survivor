@@ -116,7 +116,12 @@ function LeagueCard({
             Bolsa total
           </span>
           <span className="text-sm font-bold text-warning tabular-nums">
-            {formatMxn(league.entryFee * league.remainingEntries)}
+            {formatMxn(
+              Math.max(
+                Number(league.bolsaTotal ?? 0),
+                league.entryFee * Math.max(league.remainingEntries, 1),
+              ),
+            )}
           </span>
         </div>
       ) : null}

@@ -229,12 +229,24 @@ async function main() {
         })
         .select("id")
         .single();
+    const minimalInsert = () =>
+      admin
+        .from("payments")
+        .insert({
+          user_id: resolvedUser,
+          league_id: resolvedLeague,
+          amount: total,
+          status: "completed",
+        })
+        .select("id")
+        .single();
 
     for (const attempt of [
       () => specInsert("completed"),
       () => specInsert("approved"),
       () => canonicalInsert("completed"),
       () => canonicalInsert("approved"),
+      () => minimalInsert(),
     ]) {
       try {
         const res = await attempt();
@@ -247,7 +259,7 @@ async function main() {
       }
     }
     if (!paymentId) {
-      console.error("[reconcile] No se pudo insertar el pago en `payments` (4 intentos).");
+      console.error("[reconcile] No se pudo insertar el pago en `payments` (5 intentos).");
     }
     await admin
       .from("league_participants")

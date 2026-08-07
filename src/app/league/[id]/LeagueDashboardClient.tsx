@@ -341,7 +341,10 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
   const strikesMax = dbLeague?.strikesAllowed ?? MOCK_LEAGUE.strikesMax;
   const prizePool =
     isReal && dbLeague
-      ? Math.round((dbLeague.entryFee ?? 0) * remainingEntries)
+      ? Math.max(
+          Number(dbLeague.bolsaTotal ?? 0),
+          Math.round((dbLeague.entryFee ?? 0) * Math.max(remainingEntries, 1)),
+        )
       : MOCK_LEAGUE.prizePool;
 
   const picksSeed = useMemo<WeekPicks | undefined>(() => {
