@@ -42,8 +42,8 @@ export default function CreateLeaguePage() {
   const requireAuth = useAuthGate();
 
   const [leagueName, setLeagueName] = useState("");
-  const [leagueType, setLeagueType] = useState<LeagueType>("free");
-  const [entryFee, setEntryFee] = useState("");
+  const [leagueType, setLeagueType] = useState<LeagueType>("paid");
+  const [entryFee, setEntryFee] = useState("50");
   const [isPublic, setIsPublic] = useState(true);
   const [inviteCode, setInviteCode] = useState(() => generateInviteCode());
   const [error, setError] = useState<string | null>(null);

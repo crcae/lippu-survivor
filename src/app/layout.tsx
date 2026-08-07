@@ -44,10 +44,10 @@ export const metadata: Metadata = {
     type: "website",
     images: [
       {
-        url: "/og-image.png",
+        url: "/lippu-survivor-og-graph-image.png",
         width: 1200,
         height: 630,
-        alt: "Lippu Survivor 2026 Banner",
+        alt: "Lippu Survivor 2026",
       },
     ],
   },
@@ -55,11 +55,12 @@ export const metadata: Metadata = {
     card: "summary_large_image",
     title: "Lippu Survivor 2026",
     description: "NFL Survivor Pool — Crea tu liga o únete a ligas públicas.",
-    images: ["/og-image.png"],
+    images: ["/lippu-survivor-og-graph-image.png"],
   },
   icons: {
-    icon: "/favicon.ico",
-    apple: "/apple-touch-icon.png",
+    icon: "/lippu-survivor-favicon.png",
+    shortcut: "/lippu-survivor-favicon.png",
+    apple: "/lippu-survivor-favicon.png",
   },
 };
 
