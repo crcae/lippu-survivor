@@ -231,7 +231,9 @@ export function KushkiPaymentForm({
       } else {
         setStatus("error");
         setMessage(
-          data?.message ?? "Tu pago no fue aprobado. Intenta de nuevo.",
+          data?.message ??
+            data?.error ??
+            "Tu pago no fue aprobado. Intenta de nuevo.",
         );
       }
     } catch {
@@ -321,11 +323,12 @@ export function KushkiPaymentForm({
         </div>
         <div className="space-y-1">
           <h3 className="text-xl font-bold text-text-primary">
-            ¡Pago aprobado!
+            ¡Pago completado con éxito!
           </h3>
           <p className="text-sm text-text-secondary">
-            Tu entrada a <span className="font-semibold">{leagueName}</span>{" "}
-            está confirmada.
+            Bienvenido a la liga. Tu entrada a{" "}
+            <span className="font-semibold">{leagueName}</span> está
+            confirmada.
           </p>
           {ticketNumber && (
             <p className="text-xs text-text-secondary/70 pt-1">

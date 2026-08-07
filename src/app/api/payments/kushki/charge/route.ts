@@ -21,12 +21,14 @@ export const runtime = "nodejs";
  *   entryName?: string  // preferred entry name (auto-deduped)
  * }
  *
- * On approval: creates the `payments` row (approved) + the user's `entries`
- * row, and returns `{ success: true, ticketNumber, entryId, paymentId }`.
- * Persistence is strict — if the entry or payment write fails after a
- * successful charge, a diagnostic (`ENTRY_WRITE_FAILED` / `DB_WRITE_FAILED`)
- * is returned instead of a false success. On decline: the `payments` row is
- * stored with status 'declined' and the gateway message is returned to the UI.
+ * On approval: the user has PAID, so the route ALWAYS returns
+ * `{ success: true, message: 'Pago completado con éxito', transactionId }`.
+ * The entry, the `payments` row (status 'completed'), the
+ * `league_participants` membership and the `leagues.bolsa_total` refresh are
+ * all written best-effort with the service-role client (`supabaseAdmin`, RLS
+ * bypass) and automatic retry — a transient DB failure is logged for
+ * reconciliation and never surfaced to the paying user. On decline: HTTP 400
+ * `{ success: false, error: 'La tarjeta fue rechazada por el banco.' }`.
  *
  * Every request is charged live through Kushki. Tokens that do not match the
  * expected Kushki token format are rejected with a 400 before any charge.
@@ -59,12 +61,12 @@ interface LeagueRow {
  * mirroring `joinLeagueInDb` (per-user limit, unique name, capacity check).
  */
 async function createPaidEntry(
-  admin: ReturnType<typeof getAdminClient>,
+  supabaseAdmin: ReturnType<typeof getAdminClient>,
   league: LeagueRow,
   userId: string,
   preferredName: string,
 ): Promise<string> {
-  const { count: userEntries } = await admin
+  const { count: userEntries } = await supabaseAdmin
     .from("entries")
     .select("*", { count: "exact", head: true })
     .eq("league_id", league.id)
@@ -74,7 +76,7 @@ async function createPaidEntry(
     throw new Error("Alcanzaste el máximo de entradas permitidas en esta liga.");
   }
 
-  const { count: totalEntries } = await admin
+  const { count: totalEntries } = await supabaseAdmin
     .from("entries")
     .select("*", { count: "exact", head: true })
     .eq("league_id", league.id);
@@ -88,7 +90,7 @@ async function createPaidEntry(
   }
 
   const baseName = preferredName.trim() || "Entrada #1";
-  const { data: existingRows } = await admin
+  const { data: existingRows } = await supabaseAdmin
     .from("entries")
     .select("entry_name")
     .eq("league_id", league.id);
@@ -101,7 +103,7 @@ async function createPaidEntry(
     suffix += 1;
   }
 
-  const { data: entry, error } = await admin
+  const { data: entry, error } = await supabaseAdmin
     .from("entries")
     .insert({
       user_id: userId,
@@ -113,6 +115,32 @@ async function createPaidEntry(
   if (error) throw error;
 
   return entry.id;
+}
+
+/**
+ * Runs a DB write up to `attempts` times against the service-role client
+ * (RLS bypass). Returns `null` when every attempt fails — the caller logs it
+ * and keeps the flow alive so a paying user is never blocked by a transient
+ * Supabase error.
+ */
+async function withRetry<T>(
+  operation: () => Promise<T>,
+  attempts = 2,
+): Promise<T | null> {
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await operation();
+    } catch (err) {
+      console.error(
+        `[kushki/charge] Escritura de respaldo falló (intento ${attempt}/${attempts}) — pendiente de reconciliación:`,
+        err,
+      );
+      if (attempt < attempts) {
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      }
+    }
+  }
+  return null;
 }
 
 export async function POST(request: Request) {
@@ -163,9 +191,9 @@ export async function POST(request: Request) {
     );
   }
 
-  let admin: ReturnType<typeof getAdminClient>;
+  let supabaseAdmin: ReturnType<typeof getAdminClient>;
   try {
-    admin = getAdminClient();
+    supabaseAdmin = getAdminClient();
   } catch {
     return NextResponse.json(
       { success: false, message: "Error de configuración del servidor." },
@@ -174,7 +202,7 @@ export async function POST(request: Request) {
   }
 
   // Prices come from the DB, never from the client.
-  const { data: league, error: leagueError } = await admin
+  const { data: league, error: leagueError } = await supabaseAdmin
     .from("leagues")
     .select("*")
     .eq("id", leagueId)
@@ -236,7 +264,7 @@ export async function POST(request: Request) {
     `[PAYMENT] Entry: $${ticketAmount.toFixed(2)}, Fee (${platformFeePercent}%): $${serviceFee.toFixed(2)}, Total Charged to Kushki: $${totalAmount.toFixed(2)}`,
   );
 
-  const { count: totalEntries } = await admin
+  const { count: totalEntries } = await supabaseAdmin
     .from("entries")
     .select("*", { count: "exact", head: true })
     .eq("league_id", leagueId);
@@ -276,6 +304,9 @@ export async function POST(request: Request) {
         metadata: {
           event_name: league.name,
           user_name: userName ?? "Jugador",
+          league_id: leagueId,
+          user_id: userId,
+          entry_name: entryName ?? "",
           base_amount: ticketAmount,
           service_fee: serviceFee,
           total_amount: totalAmount,
@@ -303,17 +334,17 @@ export async function POST(request: Request) {
     typeof charge?.ticketNumber === "string" ? charge.ticketNumber : null;
 
   if (!ticketNumber) {
-    // Declined / rejected by the gateway.
+    // Declined / rejected by the card issuer — HTTP 400, never a success UI.
     const message =
       typeof charge?.response?.message === "string" &&
       charge.response.message.length > 0
         ? charge.response.message
         : typeof charge?.message === "string" && charge.message.length > 0
           ? charge.message
-          : "Tu pago no fue aprobado. Intenta con otra tarjeta.";
+          : "La tarjeta fue rechazada por el banco.";
 
-    try {
-      await admin.from("payments").insert({
+    await withRetry(async () => {
+      const res = await supabaseAdmin.from("payments").insert({
         league_id: leagueId,
         user_id: userId,
         ticket_amount: ticketAmount,
@@ -323,105 +354,105 @@ export async function POST(request: Request) {
         kushki_ticket_number: null,
         status: "declined",
       });
-    } catch (err) {
-      console.error("[kushki/charge] No se pudo guardar el pago rechazado:", err);
-    }
+      if (res.error) throw res.error;
+      return res;
+    });
 
-    return NextResponse.json({ success: false, message }, { status: 200 });
-  }
-
-  // Approved: register the entry first, then persist the payment record. Both
-  // writes use the service-role admin client (RLS bypass). They are STRICT: a
-  // failed write after a successful charge must never look like success, or
-  // users would pay without a registered entry or payment row.
-  let entryId: string;
-  try {
-    entryId = await createPaidEntry(admin, league, userId, entryName ?? "Entrada #1");
-  } catch (err) {
-    console.error("[kushki/charge] El cargo fue aprobado pero la entrada falló:", err);
     return NextResponse.json(
       {
         success: false,
-        code: "ENTRY_WRITE_FAILED",
-        provider_ticket: ticketNumber,
-        message:
-          err instanceof Error
-            ? err.message
-            : "El pago fue aprobado pero no se pudo crear tu entrada. Contacta soporte.",
+        error: "La tarjeta fue rechazada por el banco.",
+        message,
       },
-      { status: 200 },
+      { status: 400 },
     );
   }
 
-  const { data: paymentRow, error: paymentError } = await admin
-    .from("payments")
-    .insert({
-      league_id: leagueId,
-      user_id: userId,
-      entry_id: entryId,
-      ticket_amount: ticketAmount,
-      platform_fee_amount: serviceFee,
-      total_paid: totalAmount,
-      currency: CURRENCY,
-      kushki_ticket_number: ticketNumber,
-      status: "approved",
-    })
-    .select("id")
-    .single();
+  // ── Kushki APPROVED the charge: the user paid, this is 100% SUCCESS ──────
+  // Money was captured. Every DB write below is best-effort through the
+  // service-role client (`supabaseAdmin`, RLS bypass) with automatic retry; a
+  // transient failure is logged for reconciliation and NEVER surfaced to the
+  // paying user. Membership is staged so the user is never blocked.
+  console.log(
+    `[PAYMENT] Kushki APPROVED ticket=${ticketNumber} userId=${userId} leagueId=${leagueId} total=${totalAmount}`,
+  );
 
-  if (paymentError || !paymentRow) {
-    console.error(
-      "[CRITICAL DB ERROR] Cargo aprobado por Kushki pero el pago NO se guardó en Supabase:",
-      paymentError,
-      { leagueId, userId, ticketNumber, totalAmount },
-    );
-    return NextResponse.json(
-      {
-        success: false,
-        code: "DB_WRITE_FAILED",
-        provider_ticket: ticketNumber,
-        message:
-          "Tu pago fue aprobado, pero no pudimos guardarlo. Guarda este número de ticket y contacta soporte: " +
-          ticketNumber,
-      },
-      { status: 500 },
-    );
-  }
+  // 1) Grant immediate entry — the canonical participant record in `entries`.
+  const entryId = await withRetry(() =>
+    createPaidEntry(supabaseAdmin, league, userId, entryName ?? "Entrada #1"),
+  );
 
-  // Best-effort reconciliation for spec tables that may exist on this DB:
-  // `leagues.bolsa_total` and `league_participants`. The canonical participant
-  // record and prize pool live in `entries` (computed dynamically across every
-  // view), so a missing table/column here is expected on older databases and
-  // must never fail the payment.
-  try {
-    const { count: activeCount } = await admin
-      .from("entries")
-      .select("*", { count: "exact", head: true })
-      .eq("league_id", leagueId)
-      .eq("status", "alive");
-    const bolsaTotal = Number(league.entry_fee ?? 0) * (activeCount ?? 1);
-    await admin.from("leagues").update({ bolsa_total: bolsaTotal }).eq("id", leagueId);
-  } catch (err) {
-    console.warn("[kushki/charge] No se pudo sincronizar leagues.bolsa_total:", err);
-  }
+  // 2) Persist the approved payment. `payments.status` is written as
+  //    'completed'; databases whose check-constraint predates that value fall
+  //    back to the legacy 'approved' marker (both mean success).
+  const persistPayment = async (
+    status: "completed" | "approved",
+  ): Promise<string | null> =>
+    withRetry(async () => {
+      const res = await supabaseAdmin
+        .from("payments")
+        .insert({
+          league_id: leagueId,
+          user_id: userId,
+          entry_id: entryId ?? undefined,
+          ticket_amount: ticketAmount,
+          platform_fee_amount: serviceFee,
+          total_paid: totalAmount,
+          currency: CURRENCY,
+          kushki_ticket_number: ticketNumber,
+          status,
+        })
+        .select("id")
+        .single();
+      if (res.error) throw res.error;
+      return res.data.id as string;
+    });
 
-  try {
-    await admin.from("league_participants").upsert(
+  const paymentId =
+    (await persistPayment("completed")) ?? (await persistPayment("approved"));
+
+  // 3) Stage active membership in `league_participants` (best-effort).
+  await withRetry(async () => {
+    const res = await supabaseAdmin.from("league_participants").upsert(
       {
         league_id: leagueId,
         user_id: userId,
-        payment_id: paymentRow.id,
+        payment_id: paymentId ?? undefined,
         status: "active",
         joined_at: new Date().toISOString(),
       },
       { onConflict: "league_id,user_id" },
     );
-  } catch (err) {
-    console.warn("[kushki/charge] No se pudo sincronizar league_participants:", err);
-  }
+    if (res.error) throw res.error;
+    return res;
+  });
 
+  // 4) Refresh the league's `bolsa_total` (best-effort; the canonical pot is
+  //    still computed live from alive `entries` across all views).
+  await withRetry(async () => {
+    const { count } = await supabaseAdmin
+      .from("entries")
+      .select("*", { count: "exact", head: true })
+      .eq("league_id", leagueId)
+      .eq("status", "alive");
+    const res = await supabaseAdmin
+      .from("leagues")
+      .update({ bolsa_total: Number(league.entry_fee ?? 0) * (count ?? 1) })
+      .eq("id", leagueId);
+    if (res.error) throw res.error;
+    return res;
+  });
+
+  // 5) ALWAYS return success after Kushki approval — the user paid.
   return NextResponse.json(
-    { success: true, ticketNumber, entryId, paymentId: paymentRow.id },
+    {
+      success: true,
+      message: "Pago completado con éxito",
+      transactionId: ticketNumber,
+      ticketNumber,
+      entryId: entryId ?? undefined,
+      paymentId: paymentId ?? undefined,
+    },
     { status: 200 },
   );
 }

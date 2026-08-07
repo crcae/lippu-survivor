@@ -259,7 +259,7 @@ create table public.payments (
   total_paid           numeric(10, 2) not null default 0,
   currency             text not null default 'MXN',
   kushki_ticket_number text,
-  status               text not null default 'approved' check (status in ('approved', 'declined')),
+  status               text not null default 'approved' check (status in ('approved', 'declined', 'completed')),
   created_at           timestamptz not null default now(),
   updated_at           timestamptz not null default now()
 );

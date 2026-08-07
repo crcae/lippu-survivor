@@ -744,7 +744,7 @@ interface PaymentRow {
   total_paid: number | string;
   currency: string;
   kushki_ticket_number: string | null;
-  status: "approved" | "declined";
+  status: "approved" | "declined" | "completed";
   created_at: string;
   updated_at: string;
 }
@@ -853,7 +853,7 @@ export async function getLeagueFinancialsInDb(
     .from("payments")
     .select("*")
     .eq("league_id", leagueId)
-    .eq("status", "approved")) as {
+    .in("status", ["approved", "completed"])) as {
     data: PaymentRow[] | null;
     error: Error | null;
   };

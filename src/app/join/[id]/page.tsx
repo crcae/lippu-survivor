@@ -157,7 +157,7 @@ export default function JoinLeaguePreviewPage() {
 
   const handlePaymentSuccess = () => {
     if (!preview) return;
-    success("¡Pago aprobado! Te has unido a la liga.");
+    success("¡Pago completado con éxito! Bienvenido a la liga.");
     setTimeout(() => {
       setPaymentOpen(false);
       router.push(`/league/${preview.league.id}`);
