@@ -14,19 +14,52 @@ const inter = Inter({
 
 export const metadata: Metadata = {
   metadataBase: new URL(APP_BASE_URL),
-  title: "Lippu Survivor 2026 — NFL Survivor Pool",
+  title: {
+    default: "Lippu Survivor 2026 — NFL Survivor Pool",
+    template: "%s | Lippu Survivor",
+  },
   description:
-    "The ultimate NFL Survivor pool experience. Pick one team each week, survive the season, and claim the prize. Powered by Lippu.",
-  keywords: ["NFL", "Survivor", "Pool", "Football", "Lippu", "2026"],
+    "Crea tu liga privada o únete a ligas públicas de la NFL. Haz tu pick semanal, evita la eliminación y gana la bolsa acumulada.",
+  keywords: [
+    "NFL",
+    "Survivor Pool",
+    "Lippu",
+    "Ligas NFL",
+    "Picks NFL",
+    "Super Bowl 2026",
+  ],
+  authors: [{ name: "Lippu" }],
+  creator: "Lippu",
+  publisher: "Lippu",
   alternates: {
     canonical: "/",
   },
   openGraph: {
-    title: "Lippu Survivor 2026",
-    description: "The ultimate NFL Survivor pool experience.",
-    siteName: "Lippu Survivor",
+    title: "Lippu Survivor 2026 — NFL Survivor Pool",
+    description:
+      "Crea tu liga privada o únete a ligas públicas. Haz tu pick semanal, evita la eliminación y llévate la bolsa acumulada.",
     url: APP_BASE_URL,
+    siteName: "Lippu Survivor",
+    locale: "es_MX",
     type: "website",
+    images: [
+      {
+        url: "/og-image.png",
+        width: 1200,
+        height: 630,
+        alt: "Lippu Survivor 2026 Banner",
+      },
+    ],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "Lippu Survivor 2026",
+    description: "NFL Survivor Pool — Crea tu liga o únete a ligas públicas.",
+    images: ["/og-image.png"],
+  },
+  icons: {
+    icon: "/favicon.ico",
+    apple: "/apple-touch-icon.png",
   },
 };
 

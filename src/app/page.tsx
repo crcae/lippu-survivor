@@ -34,7 +34,7 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [filter, setFilter] = useState<LeagueFilter>("all");
+  const [filter, setFilter] = useState<LeagueFilter>("paid");
 
   useEffect(() => {
     let cancelled = false;
@@ -60,10 +60,18 @@ export default function Home() {
 
   const visibleLeagues = useMemo(() => {
     const term = search.trim().toLowerCase();
-    return leagues.filter((league) => {
+    const filtered = leagues.filter((league) => {
       if (filter !== "all" && league.leagueType !== filter) return false;
       if (term && !league.name.toLowerCase().includes(term)) return false;
       return true;
+    });
+    // Sales-first ordering: paid leagues always before free leagues, and paid
+    // ones sorted by biggest prize pool first to maximize conversion.
+    return [...filtered].sort((a, b) => {
+      if (a.leagueType !== b.leagueType) {
+        return a.leagueType === "paid" ? -1 : 1;
+      }
+      return (b.totalPot ?? 0) - (a.totalPot ?? 0);
     });
   }, [leagues, search, filter]);
 
@@ -173,9 +181,14 @@ export default function Home() {
                       {league.name}
                     </h3>
                     {league.leagueType === "paid" ? (
-                      <Badge variant="warning" className="shrink-0 border-warning/40 bg-warning/10 text-warning">
-                        De Paga
-                      </Badge>
+                      <div className="flex flex-col items-end gap-1.5 shrink-0">
+                        <Badge variant="warning" className="border-warning/40 bg-warning/10 text-warning">
+                          De Paga
+                        </Badge>
+                        <Badge variant="default" className="border-purple-500/30 bg-purple-500/10 text-accent whitespace-nowrap">
+                          🔥 Destacada
+                        </Badge>
+                      </div>
                     ) : (
                       <Badge variant="success" className="shrink-0 border-success/40 bg-success/10 text-success">
                         Gratis
