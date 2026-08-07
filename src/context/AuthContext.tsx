@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from "react";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
+import { useRouter } from "next/navigation";
 
 import { createClient } from "@/lib/supabase/client";
 import { AuthModal } from "@/components/auth/AuthModal";
@@ -86,15 +87,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [profile, setProfile] = useState<AuthProfile | null>(null);
   const [loading, setLoading] = useState(() => supabase !== null);
   const [authOpen, setAuthOpen] = useState(false);
+  const router = useRouter();
 
   const openAuth = useCallback(() => setAuthOpen(true), []);
   const closeAuth = useCallback(() => setAuthOpen(false), []);
 
+  /**
+   * Signs out and immediately redirects to the landing page. Waits for the
+   * Supabase sign-out (cookie/session cleanup) to finish before navigating so
+   * the fresh page load never sees a half-cleared session.
+   */
   const signOut = useCallback(() => {
-    void supabase?.auth.signOut();
-    setUser(null);
-    setProfile(null);
-  }, [supabase]);
+    const done = () => {
+      setUser(null);
+      setProfile(null);
+      router.push("/");
+    };
+    if (supabase) {
+      void supabase.auth.signOut().finally(done);
+    } else {
+      done();
+    }
+  }, [supabase, router]);
 
   useEffect(() => {
     if (!supabase) return;

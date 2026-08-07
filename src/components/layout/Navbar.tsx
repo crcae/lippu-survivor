@@ -101,7 +101,7 @@ export function Navbar() {
             <button
               type="button"
               onClick={openAuth}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary-hover shadow-glow transition-all duration-200 focus-ring"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary-hover shadow-glow cursor-pointer active:scale-[0.98] transition-all duration-200 focus-ring"
             >
               <UserRound className="w-4 h-4" />
               Iniciar Sesión
@@ -113,7 +113,7 @@ export function Navbar() {
                 onClick={() => setAccountOpen((prev) => !prev)}
                 aria-expanded={accountOpen}
                 aria-haspopup="menu"
-                className="inline-flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-surface-elevated border border-border hover:border-primary/40 transition-all duration-200 focus-ring"
+                className="inline-flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-surface-elevated border border-border hover:border-primary/40 cursor-pointer active:scale-[0.98] transition-all duration-200 focus-ring"
                 title={profile?.email ? `Conectado como ${profile.email}` : "Mi cuenta"}
               >
                 <span className="relative flex items-center justify-center w-8 h-8 rounded-full bg-primary/20 text-xs font-bold text-accent">
@@ -158,7 +158,7 @@ export function Navbar() {
                         setAccountOpen(false);
                         signOut();
                       }}
-                      className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-danger hover:bg-surface transition-colors"
+                      className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-danger hover:bg-surface cursor-pointer active:scale-[0.98] transition-all duration-200"
                     >
                       <LogOut className="w-4 h-4" />
                       Cerrar Sesión
@@ -174,7 +174,7 @@ export function Navbar() {
         <button
           type="button"
           onClick={() => setIsMenuOpen((prev) => !prev)}
-          className="md:hidden inline-flex items-center justify-center w-10 h-10 rounded-xl text-text-secondary hover:text-text-primary hover:bg-surface transition-colors focus-ring"
+          className="md:hidden inline-flex items-center justify-center w-11 h-11 rounded-xl text-text-secondary hover:text-text-primary hover:bg-surface cursor-pointer active:scale-[0.95] transition-all duration-200 focus-ring"
           aria-label={isMenuOpen ? "Cerrar menú" : "Abrir menú"}
           aria-expanded={isMenuOpen}
         >
@@ -184,23 +184,49 @@ export function Navbar() {
 
       {/* Mobile menu */}
       {isMenuOpen && (
-        <div className="md:hidden border-t border-zinc-800/80 bg-zinc-950/95 backdrop-blur-md animate-fade-in">
-          <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col gap-1">
+        <div className="md:hidden border-t border-zinc-800/80 bg-zinc-950/95 backdrop-blur-xl animate-fade-in-up">
+          <div className="max-w-6xl mx-auto px-4 py-4 flex flex-col gap-2">
+            {/* Profile block (authenticated) */}
+            {!loading && !isGuest && profile && (
+              <Link
+                href="/my-leagues"
+                onClick={() => setIsMenuOpen(false)}
+                className="flex items-center gap-3 rounded-2xl bg-zinc-900/70 border border-zinc-800 p-3 mb-1 hover:border-purple-500/40 transition-colors focus-ring"
+              >
+                <span className="flex items-center justify-center w-11 h-11 rounded-full bg-gradient-to-br from-purple-600 to-indigo-600 text-sm font-bold text-white shrink-0">
+                  {avatarInitial}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-bold text-white truncate">
+                    {displayName}
+                  </span>
+                  <span className="block text-xs text-zinc-400 truncate">
+                    {profile.email}
+                  </span>
+                </span>
+                <span className="shrink-0 px-2.5 py-1 rounded-full bg-purple-500/15 text-purple-300 text-[10px] font-semibold uppercase tracking-wider">
+                  Mi Cuenta
+                </span>
+              </Link>
+            )}
+
             {NAV_LINKS.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
                 onClick={() => setIsMenuOpen(false)}
-                className={`${linkClass} ${
+                className={`min-h-[44px] inline-flex items-center px-4 py-3 rounded-xl text-sm font-semibold transition-colors focus-ring ${
                   isActive(link.href)
-                    ? "bg-primary/15 text-accent"
+                    ? "bg-primary/15 text-accent border border-primary/30"
                     : "text-text-secondary hover:text-text-primary hover:bg-surface"
                 }`}
               >
                 {link.label}
               </Link>
             ))}
+
             <div className="border-t border-zinc-800/80 my-2" />
+
             {loading ? null : isGuest ? (
               <button
                 type="button"
@@ -208,32 +234,23 @@ export function Navbar() {
                   setIsMenuOpen(false);
                   openAuth();
                 }}
-                className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold"
+                className="min-h-[48px] inline-flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary-hover shadow-glow cursor-pointer active:scale-[0.98] transition-all duration-200 focus-ring"
               >
                 <UserRound className="w-4 h-4" />
                 Iniciar Sesión
               </button>
             ) : (
-              <div className="space-y-1">
-                <div className="inline-flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold text-text-primary">
-                  <span className="relative flex items-center justify-center w-8 h-8 rounded-full bg-primary/20 text-xs font-bold text-accent">
-                    {avatarInitial}
-                    <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-success border-2 border-surface" />
-                  </span>
-                  {displayName}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setIsMenuOpen(false);
-                    signOut();
-                  }}
-                  className="inline-flex items-center gap-2 w-full px-3 py-2 rounded-xl text-sm font-medium text-danger"
-                >
-                  <LogOut className="w-4 h-4" />
-                  Cerrar Sesión
-                </button>
-              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  signOut();
+                }}
+                className="min-h-[44px] inline-flex items-center justify-center gap-2 w-full px-4 py-3 rounded-xl text-sm font-medium text-danger border border-danger/30 bg-danger/10 hover:bg-danger/20 cursor-pointer active:scale-[0.98] transition-all duration-200 focus-ring"
+              >
+                <LogOut className="w-4 h-4" />
+                Cerrar Sesión
+              </button>
             )}
           </div>
         </div>

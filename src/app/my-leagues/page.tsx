@@ -14,6 +14,7 @@ import {
   Wallet,
 } from "lucide-react";
 import { Badge, Button, Card } from "@/components/ui";
+import { useAuth } from "@/context/AuthContext";
 import {
   getCurrentUser,
   getUserCommissionedLeaguesInDb,
@@ -190,6 +191,7 @@ function TabButton({
 }
 
 export default function MyLeaguesPage() {
+  const { profile, isGuest } = useAuth();
   const [loading, setLoading] = useState(true);
   const [leagues, setLeagues] = useState<EnrolledLeague[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -286,13 +288,14 @@ export default function MyLeaguesPage() {
           <div>
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-surface-elevated border border-border text-sm text-accent font-medium mb-3">
               <Trophy className="w-4 h-4 text-primary" />
-              Mis Ligas
+              Mi Cuenta y Ligas
             </div>
             <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
-              Tus Ligas de Survivor
+              Mi Cuenta y Ligas
             </h1>
             <p className="text-text-secondary mt-2">
-              Temporada {SEASON_YEAR} · {activeLeagues.length} activa
+              Temporada {SEASON_YEAR} · {activeLeagues.length} liga
+              {activeLeagues.length === 1 ? "" : "s"} activa
               {activeLeagues.length === 1 ? "" : "s"}
               {commissionerLeagues.length > 0
                 ? ` · ${commissionerLeagues.length} como comisionado`
@@ -314,6 +317,45 @@ export default function MyLeaguesPage() {
             </Link>
           </div>
         </div>
+
+        {/* Profile card */}
+        <Card variant="elevated" className="p-6 sm:p-8">
+          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center text-3xl font-black text-white shadow-lg shadow-purple-600/30 shrink-0">
+              {(profile?.displayName?.[0] || "L").toUpperCase()}
+            </div>
+            <div className="text-center sm:text-left flex-1 min-w-0">
+              <p className="text-xs uppercase tracking-wider text-text-secondary">
+                Cuenta
+              </p>
+              <h2 className="text-2xl font-bold text-text-primary truncate">
+                {profile?.displayName || profile?.email?.split("@")[0] || "Jugador"}
+              </h2>
+              <p className="text-sm text-text-secondary truncate mt-0.5">
+                {isGuest
+                  ? "Inicia sesión para sincronizar tu cuenta"
+                  : (profile?.email ?? "")}
+              </p>
+              <div className="flex flex-wrap justify-center sm:justify-start gap-2 mt-4">
+                <Badge variant="success">
+                  <Trophy className="w-3 h-3" />
+                  {activeLeagues.length} Liga
+                  {activeLeagues.length === 1 ? "" : "s"} Activa
+                  {activeLeagues.length === 1 ? "" : "s"}
+                </Badge>
+                <Badge variant="warning">
+                  <Crown className="w-3 h-3" />
+                  {commissionerLeagues.length} Comisionado
+                  {commissionerLeagues.length === 1 ? "" : "s"}
+                </Badge>
+                <Badge variant="info">
+                  <Users className="w-3 h-3" />
+                  Jugador
+                </Badge>
+              </div>
+            </div>
+          </div>
+        </Card>
 
         {error && (
           <Card className="border-danger/40 bg-danger/10">

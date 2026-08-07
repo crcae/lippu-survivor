@@ -216,14 +216,19 @@ export function AuthModal({ isOpen, onClose, supabase }: AuthModalProps) {
             type="button"
             onClick={() => void handleGoogle()}
             disabled={loading !== null}
-            className="inline-flex items-center justify-center gap-2.5 w-full px-6 py-3 text-base rounded-xl bg-white text-zinc-900 font-semibold hover:bg-zinc-100 disabled:opacity-50 disabled:pointer-events-none transition-all duration-200 focus-ring"
+            className="inline-flex items-center justify-center gap-2.5 w-full px-6 py-3 text-base rounded-xl bg-zinc-900 text-white font-semibold border border-zinc-700 hover:bg-zinc-800 hover:border-purple-500/50 cursor-pointer active:scale-[0.98] transition-all duration-150 focus-ring disabled:opacity-50 disabled:pointer-events-none"
           >
             {loading === "google" ? (
-              <span className="inline-block w-5 h-5 border-2 border-zinc-300 border-t-zinc-900 rounded-full animate-spin" />
+              <>
+                <span className="inline-block w-5 h-5 border-2 border-zinc-500 border-t-white rounded-full animate-spin" />
+                Redirigiendo…
+              </>
             ) : (
-              <GoogleIcon />
+              <>
+                <GoogleIcon />
+                Continuar con Google
+              </>
             )}
-            Continuar con Google
           </button>
 
           <div className="flex items-center gap-3">
