@@ -195,21 +195,25 @@ async function main() {
 
   let paymentId = null;
   if (!args.dryRun) {
-    // Match the charge route: try the spec-shaped `payments` columns first,
-    // then the canonical (legacy) shape, each with status 'completed' before
-    // 'approved'. Explicit logs for every attempt.
-    const specInsert = (status) =>
+    // Match the charge route: try the LIVE `payments` column set first
+    // (verified against production), then legacy (schema.sql, no
+    // ticket/entry_fee/service_fee) and spec shapes, each with status
+    // 'completed' before 'approved'. Explicit logs for every attempt.
+    const liveInsert = (status) =>
       admin
         .from("payments")
         .insert({
           user_id: resolvedUser,
           league_id: resolvedLeague,
-          amount: total,
+          entry_id: entryId ?? undefined,
+          ticket_amount: entryFee,
+          platform_fee_amount: serviceFee,
+          total_paid: total,
+          kushki_ticket_number: args.ticket,
+          ticket: args.ticket,
           entry_fee: entryFee,
           service_fee: serviceFee,
-          ticket: args.ticket,
           status,
-          provider: "kushki",
         })
         .select("id")
         .single();
@@ -223,7 +227,6 @@ async function main() {
           ticket_amount: entryFee,
           platform_fee_amount: serviceFee,
           total_paid: total,
-          currency: "MXN",
           kushki_ticket_number: args.ticket,
           status,
         })
@@ -235,15 +238,14 @@ async function main() {
         .insert({
           user_id: resolvedUser,
           league_id: resolvedLeague,
-          amount: total,
           status: "completed",
         })
         .select("id")
         .single();
 
     for (const attempt of [
-      () => specInsert("completed"),
-      () => specInsert("approved"),
+      () => liveInsert("completed"),
+      () => liveInsert("approved"),
       () => canonicalInsert("completed"),
       () => canonicalInsert("approved"),
       () => minimalInsert(),

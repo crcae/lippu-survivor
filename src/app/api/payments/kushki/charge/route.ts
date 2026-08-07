@@ -23,12 +23,13 @@ export const runtime = "nodejs";
  *
  * On approval: the user has PAID, so the route ALWAYS returns
  * `{ success: true, ticket, bolsa_total }`. The payment is inserted directly
- * into `public.payments` with the service-role client (primary shape:
- * amount / entry_fee / service_fee / ticket / provider, status 'completed';
- * a legacy-shape fallback insert is attempted only if the primary errors).
- * Every write logs an explicit SUCCESS or FAILED line (`[PAYMENT
- * SUCCESSFULLY SAVED TO SUPABASE]` / `[CRITICAL DB INSERT FAILED]`) — errors
- * are never swallowed. The user is upserted as an ACTIVE participant in
+ * into `public.payments` with the service-role client using the LIVE table's
+ * verified column set (ticket_amount / platform_fee_amount / total_paid /
+ * kushki_ticket_number / ticket / entry_fee / service_fee, status
+ * 'completed'), with legacy / spec / minimal fallbacks for other schemas.
+ * Every write logs an explicit SUCCESS or FAILED line (`[SUPABASE PAYMENT
+ * SAVED SUCCESS]` / `DATABASE PAYMENTS INSERT FAILED`) — errors are never
+ * swallowed. The user is upserted as an ACTIVE participant in
  * `league_participants` and `leagues.bolsa_total` is recomputed immediately.
  * On decline: HTTP 400 `{ success: false, error: 'La tarjeta fue rechazada
  * por el banco.' }`.
@@ -376,12 +377,11 @@ export async function POST(request: Request) {
 
     await withRetry(async () => {
       const res = await supabaseAdmin.from("payments").insert({
-        league_id: leagueId,
-        user_id: userId,
-        ticket_amount: ticketAmount,
-        platform_fee_amount: serviceFee,
-        total_paid: totalAmount,
-        currency: CURRENCY,
+        league_id: String(leagueId),
+        user_id: String(userId),
+        ticket_amount: Number(ticketAmount.toFixed(2)),
+        platform_fee_amount: Number(serviceFee.toFixed(2)),
+        total_paid: Number(totalAmount.toFixed(2)),
         kushki_ticket_number: null,
         status: "declined",
       });
@@ -413,13 +413,13 @@ export async function POST(request: Request) {
     createPaidEntry(supabaseAdmin, league, userId, entryName ?? "Entrada #1"),
   );
 
-  // 2) Persist the approved payment with the service-role client. PRIMARY
-  //    insert uses the standard `payments` columns (amount / entry_fee /
-  //    service_fee / ticket / provider, status 'completed'). If that shape is
-  //    rejected by the database (legacy schema using ticket_amount /
-  //    platform_fee_amount / total_paid / kushki_ticket_number), a
-  //    compatibility fallback insert is attempted. Every attempt logs an
-  //    explicit SUCCESS or FAILED line — nothing is ever swallowed silently.
+  // 2) Persist the approved payment with the service-role client. The PRIMARY
+  //    insert uses the exact column set present in the LIVE `payments` table
+  //    (verified against production: ticket_amount / platform_fee_amount /
+  //    total_paid / kushki_ticket_number + ticket / entry_fee / service_fee).
+  //    Compatibility fallbacks (legacy without `currency`, spec, minimal) are
+  //    attempted only if the database rejects that shape. Every attempt logs
+  //    an explicit SUCCESS or FAILED line — nothing is ever swallowed.
   const ticketId = ticket;
 
   const insertPayment = async (
@@ -439,64 +439,85 @@ export async function POST(request: Request) {
     }
   };
 
+  // Live-DB shape (verified working in production, July 2026).
   const primaryPayload = {
     user_id: String(userId),
     league_id: String(leagueId),
-    amount: Number(totalAmount.toFixed(2)),
+    entry_id: entryId ?? undefined,
+    ticket_amount: Number(ticketAmount.toFixed(2)),
+    platform_fee_amount: Number(serviceFee.toFixed(2)),
+    total_paid: Number(totalAmount.toFixed(2)),
+    kushki_ticket_number: String(ticketId),
+    ticket: String(ticketId),
     entry_fee: Number(ticketAmount.toFixed(2)),
     service_fee: Number(serviceFee.toFixed(2)),
-    ticket: String(ticketId),
     status: "completed",
-    provider: "kushki",
   };
 
   let paymentId: string | null = null;
   let dbWriteWarning: string | null = null;
 
-  const primary = await insertPayment("PRIMARY", primaryPayload);
-  if (primary.ok) {
-    paymentId = primary.id;
-    console.log(
-      `[SUPABASE PAYMENT SAVED SUCCESS] ${JSON.stringify(primary)} ticket=${ticketId}`,
-    );
-  } else {
-    console.error("DATABASE PAYMENTS INSERT FAILED:", primary.error);
-    const fallbackPayload = {
-      league_id: String(leagueId),
-      user_id: String(userId),
-      entry_id: entryId ?? undefined,
-      ticket_amount: ticketAmount,
-      platform_fee_amount: serviceFee,
-      total_paid: totalAmount,
-      currency: CURRENCY,
-      kushki_ticket_number: ticketId,
-      status: "completed",
-    };
-    const fallback = await insertPayment("FALLBACK", fallbackPayload);
-    if (fallback.ok) {
-      paymentId = fallback.id;
-      console.log(
-        `[SUPABASE PAYMENT SAVED SUCCESS] ${JSON.stringify(fallback)} ticket=${ticketId} shape=legacy`,
-      );
-    } else {
-      console.error("DATABASE PAYMENTS INSERT FAILED (legacy shape):", fallback.error);
-      // Last-resort: minimal required fields only.
-      const minimal = await insertPayment("MINIMAL", {
+  const attempts: Array<{ label: string; payload: Record<string, unknown> }> = [
+    {
+      label: "PRIMARY(live)",
+      payload: primaryPayload,
+    },
+    {
+      // Fresh `schema.sql` databases (has `currency`, no `ticket`/`entry_fee`).
+      label: "LEGACY(schema.sql)",
+      payload: {
+        league_id: String(leagueId),
+        user_id: String(userId),
+        entry_id: entryId ?? undefined,
+        ticket_amount: Number(ticketAmount.toFixed(2)),
+        platform_fee_amount: Number(serviceFee.toFixed(2)),
+        total_paid: Number(totalAmount.toFixed(2)),
+        kushki_ticket_number: String(ticketId),
+        status: "completed",
+      },
+    },
+    {
+      // Spec-shaped databases (has `amount`/`provider`, no legacy columns).
+      label: "SPEC(amount/provider)",
+      payload: {
         user_id: String(userId),
         league_id: String(leagueId),
         amount: Number(totalAmount.toFixed(2)),
+        entry_fee: Number(ticketAmount.toFixed(2)),
+        service_fee: Number(serviceFee.toFixed(2)),
+        ticket: String(ticketId),
         status: "completed",
-      });
-      if (minimal.ok) {
-        paymentId = minimal.id;
-        console.log(
-          `[SUPABASE PAYMENT SAVED SUCCESS] ${JSON.stringify(minimal)} ticket=${ticketId} shape=minimal`,
-        );
-      } else {
-        console.error("DATABASE PAYMENTS INSERT FAILED (minimal fields):", minimal.error);
-        dbWriteWarning = "payments_insert_failed";
-      }
+        provider: "kushki",
+      },
+    },
+    {
+      // Universal last resort: every schema has `user_id`, `league_id`,
+      // `status` and `created_at` (defaulted), so this always lands.
+      label: "MINIMAL(user/league/status)",
+      payload: {
+        user_id: String(userId),
+        league_id: String(leagueId),
+        status: "completed",
+      },
+    },
+  ];
+
+  for (const attempt of attempts) {
+    const res = await insertPayment(attempt.label, attempt.payload);
+    if (res.ok) {
+      paymentId = res.id;
+      console.log(
+        `[SUPABASE PAYMENT SAVED SUCCESS] ${JSON.stringify(res)} ticket=${ticketId} attempt=${attempt.label}`,
+      );
+      break;
     }
+    console.error(
+      `DATABASE PAYMENTS INSERT FAILED: ${attempt.label}`,
+      res.error,
+    );
+  }
+  if (!paymentId) {
+    dbWriteWarning = "payments_insert_failed";
   }
 
   // 3) Register the user as an ACTIVE participant (`league_participants`).
