@@ -353,6 +353,14 @@ export default function MyLeaguesPage() {
                   Jugador
                 </Badge>
               </div>
+              <a
+                href="https://wa.me/523322547372?text=Hola%21%20Tengo%20una%20consulta%20sobre%20Lippu%20Survivor"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-purple-400 hover:underline flex items-center gap-1 mt-4 justify-center sm:justify-start"
+              >
+                💬 Contactar Soporte por WhatsApp
+              </a>
             </div>
           </div>
         </Card>

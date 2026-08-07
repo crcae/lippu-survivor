@@ -16,8 +16,9 @@ import { formatMxn } from "@/lib/survivor-utils";
  * success/error status screens. Card data is tokenized on-device by the Kushki
  * SDK and only the token is sent to `/api/payments/kushki/charge`.
  *
- * NOTE: Apple Pay is temporarily hidden while Kushki completes subdomain
- * verification for the merchant account.
+ * Apple Pay is offered on supported devices (Safari + secure origin) but is
+ * under maintenance: clicking it opens a top-layer notice asking the user to
+ * pay by card while Kushki finishes subdomain verification.
  */
 
 const KUSHKI_PUBLIC_MERCHANT_ID = "8b4407dc16954e949b77384573dd86b7";
@@ -60,6 +61,9 @@ declare global {
       merchantId: string;
       inTestEnvironment: boolean;
     }) => KushkiInstance;
+    ApplePaySession?: {
+      supportsVersion: (version: number) => boolean;
+    };
   }
 }
 
@@ -137,6 +141,8 @@ export function KushkiPaymentForm({
   const [status, setStatus] = useState<FormStatus>("idle");
   const [message, setMessage] = useState("");
   const [ticketNumber, setTicketNumber] = useState<string | null>(null);
+  const [applePayAvailable, setApplePayAvailable] = useState(false);
+  const [applePayNotice, setApplePayNotice] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -146,6 +152,20 @@ export function KushkiPaymentForm({
     return () => {
       cancelled = true;
     };
+  }, []);
+
+  // Apple Pay only works on Safari with a supported ApplePaySession on a
+  // secure origin. When unavailable the option is hidden entirely (card
+  // checkout stays the primary path).
+  useEffect(() => {
+    const check = setTimeout(() => {
+      setApplePayAvailable(
+        typeof window !== "undefined" &&
+          typeof window.ApplePaySession === "function" &&
+          window.isSecureContext === true,
+      );
+    }, 0);
+    return () => clearTimeout(check);
   }, []);
 
   const validate = (): string | null => {
@@ -375,6 +395,27 @@ export function KushkiPaymentForm({
         </div>
       </div>
 
+      {/* Apple Pay (supported devices only; under maintenance) */}
+      {applePayAvailable && (
+        <div className="space-y-3">
+          <button
+            type="button"
+            onClick={() => setApplePayNotice(true)}
+            className="w-full h-11 rounded-xl bg-black text-white flex items-center justify-center gap-2 font-semibold text-base hover:opacity-90 transition-opacity cursor-pointer active:scale-[0.98] focus-ring"
+          >
+            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+              <path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.03 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.56-1.702z" />
+            </svg>
+            Apple Pay
+          </button>
+          <div className="flex items-center gap-3">
+            <span className="flex-1 h-px bg-border" />
+            <span className="text-xs text-text-secondary">o paga con tarjeta</span>
+            <span className="flex-1 h-px bg-border" />
+          </div>
+        </div>
+      )}
+
       {/* Card fields */}
       <div className="space-y-3">
         <div className="space-y-1.5">
@@ -489,6 +530,52 @@ export function KushkiPaymentForm({
           Pago procesado de forma segura por Kushki
         </p>
       </div>
+
+      {/* Support footer */}
+      <div className="pt-3 border-t border-border">
+        <a
+          href="https://wa.me/523322547372?text=Hola%21%20Tengo%20una%20consulta%20sobre%20Lippu%20Survivor"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-xs text-purple-400 hover:underline flex items-center justify-center gap-1 transition-colors"
+        >
+          💬 Contactar Soporte por WhatsApp
+        </a>
+      </div>
+
+      {/* Apple Pay maintenance notice — top layer so it sits above all backdrops */}
+      {applePayNotice && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="apple-pay-notice-title"
+        >
+          <div className="w-full max-w-sm rounded-2xl bg-surface-elevated border border-border p-6 text-center shadow-elevated">
+            <div className="w-12 h-12 rounded-full bg-warning/10 border border-warning/40 flex items-center justify-center mx-auto mb-4">
+              <AlertCircle className="w-6 h-6 text-warning" />
+            </div>
+            <h3
+              id="apple-pay-notice-title"
+              className="text-lg font-bold text-text-primary"
+            >
+              Apple Pay en Mantenimiento
+            </h3>
+            <p className="text-sm text-text-secondary mt-2 leading-relaxed">
+              Estamos finalizando la verificación de Apple Pay para
+              survivor.lippu.app. Por favor, completa tu pago con Tarjeta de
+              Crédito o Débito por ahora.
+            </p>
+            <Button
+              variant="primary"
+              className="w-full mt-5"
+              onClick={() => setApplePayNotice(false)}
+            >
+              Entendido, pagar con tarjeta
+            </Button>
+          </div>
+        </div>
+      )}
     </form>
   );
 }

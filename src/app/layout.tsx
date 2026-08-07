@@ -2,7 +2,6 @@ import type { Metadata, Viewport } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Navbar } from "@/components/layout/Navbar";
-import { FloatingWhatsApp } from "@/components/common/FloatingWhatsApp";
 import { ToastProvider } from "@/components/ui";
 import { AuthProvider } from "@/context/AuthContext";
 import { APP_BASE_URL } from "@/lib/survivor-utils";
@@ -48,7 +47,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
           <ToastProvider>
             <Navbar />
             {children}
-            <FloatingWhatsApp />
           </ToastProvider>
         </AuthProvider>
       </body>

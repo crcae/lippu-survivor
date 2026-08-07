@@ -205,9 +205,11 @@ export default function JoinLeaguePreviewPage() {
     preview.entryCount >= league.capacity;
 
   const platformFee = isPaid
-    ? (league.entryFee ?? 0) * (PLATFORM_FEE_PERCENT / 100)
+    ? Number(((league.entryFee ?? 0) * (PLATFORM_FEE_PERCENT / 100)).toFixed(2))
     : 0;
-  const totalToPay = isPaid ? (league.entryFee ?? 0) + platformFee : 0;
+  const totalToPay = isPaid
+    ? Number(((league.entryFee ?? 0) + platformFee).toFixed(2))
+    : 0;
 
   return (
     <div className="min-h-screen flex flex-col">
@@ -454,7 +456,7 @@ export default function JoinLeaguePreviewPage() {
           setPaymentOpen(false);
           setError(null);
         }}
-        title="Completa tu pago"
+        title={`Completa tu pago · ${formatMxn(totalToPay)}`}
       >
         {paymentUser && (
           <KushkiPaymentForm

@@ -131,14 +131,23 @@ export function formatPrizePool(amount: number): string {
   return formatMoney(amount);
 }
 
-/** Format an amount as Mexican pesos, e.g. "$50 MXN". */
-export function formatMxn(amount: number): string {
-  const formatted = new Intl.NumberFormat("es-MX", {
+/**
+ * Format an amount as Mexican pesos with STRICT 2-decimal precision, e.g.
+ * "$2.00", "$0.16", "$2.16". Never drops cents, so entry fees, the 8%
+ * platform fee and totals always match what is charged to the gateway.
+ */
+export function formatCurrency(amount: number): string {
+  return new Intl.NumberFormat("es-MX", {
     style: "currency",
     currency: "MXN",
-    maximumFractionDigits: 0,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(amount);
-  return `${formatted} MXN`;
+}
+
+/** Format an amount as Mexican pesos, e.g. "$2.16 MXN" (always 2 decimals). */
+export function formatMxn(amount: number): string {
+  return `${formatCurrency(amount)} MXN`;
 }
 
 function capitalize(value: string): string {
