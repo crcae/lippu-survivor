@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/supabase/admin";
+import { PLATFORM_FEE_PERCENT } from "@/lib/survivor-utils";
 
 export const runtime = "nodejs";
 
@@ -238,11 +239,13 @@ export async function POST(request: Request) {
   }
 
   // Server-side pricing — never trust the client. All values are float pesos
-  // with 2-decimal precision.
+  // with 2-decimal precision. Service fee is a STRICT `PLATFORM_FEE_PERCENT`
+  // (10%) of the entry fee — the stored `platform_fee_percent` is ignored so
+  // every charge, old or new, uses the permanent rate.
   const ticketAmount = Number(league.entry_fee ?? 0);
-  const platformFeePercent = Number(league.platform_fee_percent ?? 8);
+  const platformFeePercent = PLATFORM_FEE_PERCENT;
   const serviceFee = Number((ticketAmount * (platformFeePercent / 100)).toFixed(2));
-  const totalAmount = Number((ticketAmount + serviceFee).toFixed(2));
+  const totalAmount = Number((ticketAmount * (1 + platformFeePercent / 100)).toFixed(2));
 
   if (ticketAmount <= 0 || totalAmount <= 0) {
     return NextResponse.json(
@@ -252,8 +255,8 @@ export async function POST(request: Request) {
   }
 
   // Safety guard: the total must never exceed the entry fee by more than the
-  // 8% service fee (plus a 1% tolerance). Abort instead of overcharging.
-  if (totalAmount > ticketAmount * 1.09) {
+  // 10% service fee (plus a 1% tolerance). Abort instead of overcharging.
+  if (totalAmount > ticketAmount * 1.11) {
     console.error(
       `[PAYMENT] OVERCHARGE GUARD: entry=${ticketAmount}, fee=${serviceFee}, total=${totalAmount} excede el límite permitido. Cargo abortado.`,
     );

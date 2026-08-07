@@ -11,7 +11,7 @@ import {
   joinLeagueInDb,
   type LeagueLookup,
 } from "@/lib/services/survivor-db";
-import { formatMoney } from "@/lib/survivor-utils";
+import { formatMoney, PLATFORM_FEE_PERCENT } from "@/lib/survivor-utils";
 
 const inputClass =
   "w-full rounded-xl border border-border bg-surface px-4 py-3 text-center text-2xl font-mono font-bold tracking-[0.4em] uppercase text-primary placeholder:text-text-secondary/30 focus:border-primary/60 focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all duration-200";
@@ -304,8 +304,8 @@ export default function JoinLeaguePage() {
               <>
                 Pagar Entrada y Unirme (
                 {formatMoney(
-                  (validatedLeague.league.entryFee ?? 0) +
-                    (validatedLeague.league.entryFee ?? 0) * 0.08,
+                  (validatedLeague.league.entryFee ?? 0) *
+                    (1 + PLATFORM_FEE_PERCENT / 100),
                 )}
                 )
                 <ArrowRight className="w-4 h-4" />

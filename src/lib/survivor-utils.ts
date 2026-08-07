@@ -12,6 +12,13 @@ export const APP_BASE_URL = (
   process.env.NEXT_PUBLIC_APP_URL ?? "https://survivor.lippu.app"
 ).replace(/\/+$/, "");
 
+/**
+ * Permanent platform service-fee percentage charged per paid entry. Single
+ * source of truth: the charge route, checkout breakdowns and finance KPIs all
+ * derive from this constant (10% as of the 2026 season).
+ */
+export const PLATFORM_FEE_PERCENT = 10;
+
 /** Format a kickoff ISO timestamp as a compact "weekday HH:mm" label. */
 export function formatKickoff(kickoffTime: string, now: number): string {
   const date = new Date(kickoffTime);
@@ -133,7 +140,7 @@ export function formatPrizePool(amount: number): string {
 
 /**
  * Format an amount as Mexican pesos with STRICT 2-decimal precision, e.g.
- * "$2.00", "$0.16", "$2.16". Never drops cents, so entry fees, the 8%
+ * "$2.00", "$0.20", "$2.20". Never drops cents, so entry fees, the 10%
  * platform fee and totals always match what is charged to the gateway.
  */
 export function formatCurrency(amount: number): string {

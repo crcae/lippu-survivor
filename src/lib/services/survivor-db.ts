@@ -3,6 +3,7 @@
 import type { User } from "@supabase/supabase-js";
 import { createClient } from "@/lib/supabase/client";
 import { ACTIVE_WEEK, SEASON_YEAR } from "@/lib/mock-survivor-data";
+import { PLATFORM_FEE_PERCENT } from "@/lib/survivor-utils";
 import type {
   EntryStatus,
   GameStatus,
@@ -127,7 +128,7 @@ export interface CreateLeaguePayload {
   leagueType?: "paid" | "free";
   /** Defaults to `true` (appears on the landing page) when omitted. */
   isPublic?: boolean;
-  /** Defaults to `8` (8% platform fee) when omitted. */
+  /** Defaults to `PLATFORM_FEE_PERCENT` (10% platform fee) when omitted. */
   platformFeePercent?: number;
   inviteCode: string;
 }
@@ -198,7 +199,7 @@ function mapLeague(row: LeagueRow): League {
     entryFee: Number(row.entry_fee),
     leagueType: row.league_type === "paid" ? "paid" : "free",
     isPublic: row.is_public ?? true,
-    platformFeePercent: Number(row.platform_fee_percent ?? 8),
+      platformFeePercent: Number(row.platform_fee_percent ?? PLATFORM_FEE_PERCENT),
     bolsaTotal: Number(row.bolsa_total ?? 0),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -456,7 +457,7 @@ export async function createLeagueInDb(
       entry_fee: payload.entryFee ?? 0,
       league_type: payload.leagueType ?? "free",
       is_public: payload.isPublic ?? true,
-      platform_fee_percent: payload.platformFeePercent ?? 8,
+      platform_fee_percent: payload.platformFeePercent ?? PLATFORM_FEE_PERCENT,
       invite_code: payload.inviteCode,
       status: "active",
     })
@@ -678,7 +679,7 @@ export async function getPublicLeaguesInDb(): Promise<PublicLeague[]> {
       name: row.name,
       leagueType: row.league_type === "paid" ? "paid" : "free",
       entryFee,
-      platformFeePercent: Number(row.platform_fee_percent ?? 8),
+    platformFeePercent: Number(row.platform_fee_percent ?? PLATFORM_FEE_PERCENT),
       activeParticipants,
       totalPot: Math.round(entryFee * activeParticipants),
       bolsaTotal: Number(row.bolsa_total ?? 0) || undefined,
@@ -852,7 +853,9 @@ export async function getLeagueFinancialsInDb(
   const league = mapLeague(leagueRow as LeagueRow);
   const isPaid = league.leagueType === "paid";
   const entryFee = Number(league.entryFee ?? 0);
-  const feePercent = Number(league.platformFeePercent ?? 8);
+  // Expected fee mirrors the charge route's STRICT rate (stored per-league
+  // values may be stale for older leagues).
+  const feePercent = PLATFORM_FEE_PERCENT;
   const expectedFee = round2(entryFee * (feePercent / 100));
   const expectedTotal = round2(entryFee + expectedFee);
 

@@ -23,9 +23,7 @@ import {
   joinLeagueInDb,
   type LeaguePreview,
 } from "@/lib/services/survivor-db";
-import { formatMxn } from "@/lib/survivor-utils";
-
-const PLATFORM_FEE_PERCENT = 8;
+import { formatMxn, PLATFORM_FEE_PERCENT } from "@/lib/survivor-utils";
 
 const inputClass =
   "w-full rounded-xl border border-border bg-surface px-4 py-2.5 text-sm text-text-primary placeholder:text-text-secondary/50 focus:border-primary/60 focus:outline-none focus:ring-1 focus:ring-primary/40 transition-all duration-200";

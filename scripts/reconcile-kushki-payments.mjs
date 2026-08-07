@@ -161,7 +161,7 @@ async function main() {
     .eq("id", resolvedLeague)
     .single();
   const entryFee = Number(league?.entry_fee ?? amount ?? 0);
-  const feePercent = Number(league?.platform_fee_percent ?? 8);
+  const feePercent = Number(league?.platform_fee_percent ?? 10);
   const serviceFee = Number((entryFee * (feePercent / 100)).toFixed(2));
   const total = Number((entryFee + serviceFee).toFixed(2));
 

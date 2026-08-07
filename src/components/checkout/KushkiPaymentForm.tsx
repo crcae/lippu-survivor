@@ -9,7 +9,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui";
-import { formatMxn } from "@/lib/survivor-utils";
+import { formatMxn, PLATFORM_FEE_PERCENT } from "@/lib/survivor-utils";
 
 /**
  * Kushki card checkout for paid league entries. Renders the card form and the
@@ -388,7 +388,9 @@ export function KushkiPaymentForm({
           </span>
         </div>
         <div className="flex items-center justify-between px-4 py-2.5">
-          <span className="text-sm text-text-secondary">Fee de servicio</span>
+          <span className="text-sm text-text-secondary">
+            Fee de servicio ({PLATFORM_FEE_PERCENT}%)
+          </span>
           <span className="text-sm font-semibold text-warning tabular-nums">
             {formatMxn(platformFee)}
           </span>

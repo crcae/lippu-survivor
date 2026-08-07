@@ -35,7 +35,7 @@ export interface League {
   leagueType?: "paid" | "free";
   /** When true the league is listed on the public landing page. */
   isPublic?: boolean;
-  /** Platform fee charged per entry (e.g. 8 = 8%). */
+  /** Platform fee charged per entry (e.g. 10 = 10%). */
   platformFeePercent?: number;
   /** Prize pool stored on the league record (kept in sync with payments). */
   bolsaTotal?: number;

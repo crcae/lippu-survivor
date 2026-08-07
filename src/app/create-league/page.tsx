@@ -17,10 +17,9 @@ import { Button, Card, useToast } from "@/components/ui";
 import { SEASON_YEAR } from "@/lib/mock-survivor-data";
 import { createLeagueInDb } from "@/lib/services/survivor-db";
 import { useAuthGate } from "@/hooks/useAuthGate";
-import { APP_BASE_URL, formatMxn } from "@/lib/survivor-utils";
+import { APP_BASE_URL, formatMxn, PLATFORM_FEE_PERCENT } from "@/lib/survivor-utils";
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-const PLATFORM_FEE_PERCENT = 8;
 const ESTIMATED_PLAYERS = 10;
 
 function generateInviteCode(): string {
