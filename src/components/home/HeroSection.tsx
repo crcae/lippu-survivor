@@ -8,11 +8,8 @@ import { SEASON_YEAR } from "@/lib/mock-survivor-data";
  */
 export function HeroSection() {
   return (
-    <section className="relative overflow-hidden bg-zinc-950">
-      {/* Ambient purple radial glow behind the hero content */}
-      <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,rgba(88,28,135,0.20),rgba(49,46,129,0.10)_45%,transparent_72%)]" />
-
-      {/* Subtle grid overlay, masked to fade at the bottom */}
+    <section className="relative overflow-hidden">
+      {/* Subtle grid overlay, masked to fade at the bottom (page bg handled by the unified ambient layer in page.tsx) */}
       <div
         className="absolute inset-0 opacity-60"
         style={{
@@ -26,7 +23,7 @@ export function HeroSection() {
         }}
       />
 
-      <div className="relative max-w-6xl mx-auto px-6 pt-20 sm:pt-28 pb-20 sm:pb-24 text-center">
+      <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 sm:pt-24 pb-12 sm:pb-16 text-center">
         {/* Micro-badge */}
         <div className="flex justify-center mb-8 animate-fade-in-up">
           <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-950/40 border border-purple-800/40 text-xs text-purple-300">

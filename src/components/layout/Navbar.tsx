@@ -59,16 +59,16 @@ export function Navbar() {
   return (
     <header className="sticky top-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/80">
       <nav className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-        {/* Brand — typography-only wordmark */}
+        {/* Brand — "Vibra Lippu" typography-only wordmark */}
         <Link
           href="/"
           className="flex items-center gap-2.5 focus-ring rounded-xl"
         >
           <span className="flex items-center gap-2 whitespace-nowrap">
-            <span className="text-lg font-black tracking-tight bg-gradient-to-r from-white via-white to-primary bg-clip-text text-transparent">
-              LIPPU SURVIVOR
+            <span className="text-lg font-bold tracking-tight text-white">
+              Lippu <span className="text-purple-400 font-normal">Survivor</span>
             </span>
-            <span className="px-2 py-0.5 text-[10px] font-semibold tracking-wider uppercase rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+            <span className="ml-2 px-2 py-0.5 text-[10px] font-medium tracking-wide rounded-full bg-purple-500/10 text-purple-300 border border-purple-500/20">
               2026
             </span>
           </span>
