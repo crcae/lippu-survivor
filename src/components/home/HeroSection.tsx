@@ -3,8 +3,8 @@ import { ArrowRight, Compass } from "lucide-react";
 import { SEASON_YEAR } from "@/lib/mock-survivor-data";
 
 /**
- * Landing page hero — refined purple/violet brand aesthetic with a soft
- * ambient glow, balanced typography and a purple-to-indigo CTA pair.
+ * Landing page hero — refined "Vibra Lippu" aesthetic built on the app's
+ * design tokens (purple ambient glow, accent highlights and primary CTAs).
  */
 export function HeroSection() {
   return (
@@ -26,23 +26,23 @@ export function HeroSection() {
       <div className="relative max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 pt-20 sm:pt-24 pb-12 sm:pb-16 text-center">
         {/* Micro-badge */}
         <div className="flex justify-center mb-8 animate-fade-in-up">
-          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-purple-950/40 border border-purple-800/40 text-xs text-purple-300">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-primary/10 border border-primary/30 text-xs text-accent">
             🏆 NFL Survivor Pool — Temporada {SEASON_YEAR}
           </div>
         </div>
 
         {/* Headline */}
         <h1
-          className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-white animate-fade-in-up"
+          className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight text-text-primary animate-fade-in-up"
           style={{ animationDelay: "0.1s" }}
         >
-          Lippu <span className="text-purple-400">Survivor</span>{" "}
-          <span className="text-zinc-500">· {SEASON_YEAR}</span>
+          Lippu <span className="text-accent">Survivor</span>{" "}
+          <span className="text-text-secondary">· {SEASON_YEAR}</span>
         </h1>
 
         {/* Subheadline */}
         <p
-          className="mt-6 text-lg text-zinc-300 max-w-2xl mx-auto leading-relaxed animate-fade-in-up"
+          className="mt-6 text-lg text-text-secondary max-w-2xl mx-auto leading-relaxed animate-fade-in-up"
           style={{ animationDelay: "0.15s" }}
         >
           Crea tu liga privada o únete a ligas públicas. Haz tu pick cada
@@ -57,16 +57,16 @@ export function HeroSection() {
         >
           <Link
             href="/create-league"
-            className="group inline-flex items-center gap-2 px-7 py-3.5 rounded-2xl text-base font-semibold bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white shadow-lg shadow-purple-600/25 hover:shadow-purple-500/40 transition-all cursor-pointer hover:-translate-y-0.5 focus-ring"
+            className="group inline-flex items-center gap-2 px-7 py-3.5 rounded-2xl text-base font-semibold bg-primary hover:bg-primary-hover text-white shadow-glow hover:shadow-glow-lg transition-all cursor-pointer hover:-translate-y-0.5 focus-ring"
           >
             Crear mi Liga
             <ArrowRight className="w-5 h-5 transition-transform group-hover:translate-x-1" />
           </Link>
           <a
             href="#public-leagues"
-            className="inline-flex items-center gap-2 px-7 py-3.5 rounded-2xl text-base font-semibold bg-zinc-900/80 border border-zinc-800 hover:border-zinc-700 text-zinc-200 transition-all cursor-pointer hover:-translate-y-0.5 focus-ring"
+            className="inline-flex items-center gap-2 px-7 py-3.5 rounded-2xl text-base font-semibold bg-surface border border-border hover:border-primary/40 text-text-primary transition-all cursor-pointer hover:-translate-y-0.5 focus-ring"
           >
-            <Compass className="w-5 h-5 text-purple-400" />
+            <Compass className="w-5 h-5 text-accent" />
             Explorar Ligas
           </a>
         </div>
