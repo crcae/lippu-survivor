@@ -195,8 +195,26 @@ async function main() {
 
   let paymentId = null;
   if (!args.dryRun) {
-    const insertPayment = async (status) => {
-      const res = await admin
+    // Match the charge route: try the spec-shaped `payments` columns first,
+    // then the canonical (legacy) shape, each with status 'completed' before
+    // 'approved'. Explicit logs for every attempt.
+    const specInsert = (status) =>
+      admin
+        .from("payments")
+        .insert({
+          user_id: resolvedUser,
+          league_id: resolvedLeague,
+          amount: total,
+          entry_fee: entryFee,
+          service_fee: serviceFee,
+          ticket: args.ticket,
+          status,
+          provider: "kushki",
+        })
+        .select("id")
+        .single();
+    const canonicalInsert = (status) =>
+      admin
         .from("payments")
         .insert({
           league_id: resolvedLeague,
@@ -211,13 +229,25 @@ async function main() {
         })
         .select("id")
         .single();
-      if (res.error) throw res.error;
-      return res.data.id;
-    };
-    try {
-      paymentId = await insertPayment("completed");
-    } catch {
-      paymentId = await insertPayment("approved");
+
+    for (const attempt of [
+      () => specInsert("completed"),
+      () => specInsert("approved"),
+      () => canonicalInsert("completed"),
+      () => canonicalInsert("approved"),
+    ]) {
+      try {
+        const res = await attempt();
+        if (res.error) throw res.error;
+        paymentId = res.data.id;
+        console.log(`[reconcile] Payment insertó correctamente (id=${paymentId})`);
+        break;
+      } catch (err) {
+        console.warn("[reconcile] Intento de insert en payments falló:", err.message);
+      }
+    }
+    if (!paymentId) {
+      console.error("[reconcile] No se pudo insertar el pago en `payments` (4 intentos).");
     }
     await admin
       .from("league_participants")

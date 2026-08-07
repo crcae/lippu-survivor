@@ -751,11 +751,18 @@ interface PaymentRow {
   league_id: string;
   user_id: string;
   entry_id: string | null;
-  ticket_amount: number | string;
-  platform_fee_amount: number | string;
-  total_paid: number | string;
-  currency: string;
-  kushki_ticket_number: string | null;
+  // Canonical column set.
+  ticket_amount?: number | string;
+  platform_fee_amount?: number | string;
+  total_paid?: number | string;
+  currency?: string;
+  kushki_ticket_number?: string | null;
+  // Spec-shaped column set (amount / entry_fee / service_fee / ticket).
+  amount?: number | string;
+  entry_fee?: number | string;
+  service_fee?: number | string;
+  ticket?: string | null;
+  provider?: string | null;
   status: "approved" | "declined" | "completed";
   created_at: string;
   updated_at: string;
@@ -871,45 +878,74 @@ export async function getLeagueFinancialsInDb(
   };
   if (paymentsError) throw paymentsError;
 
+  // Best-effort: users registered as ACTIVE in `league_participants` count as
+  // paid even if their `payments` row is missing (reconciliation safety).
+  // Databases without that table simply yield an empty set.
+  let activeParticipantIds = new Set<string>();
+  try {
+    const { data: participantRows } = await supabase
+      .from("league_participants")
+      .select("user_id")
+      .eq("league_id", leagueId)
+      .eq("status", "active");
+    activeParticipantIds = new Set(
+      (participantRows ?? []).map((row) => row.user_id),
+    );
+  } catch {
+    // `league_participants` table does not exist on this database — ignore.
+  }
+
+  // Payments may carry `entry_id` (canonical) or only `user_id` (spec shape),
+  // so match by both.
   const paymentByEntry = new Map<string, PaymentRow>();
+  const paymentByUser = new Map<string, PaymentRow>();
   for (const payment of paymentRows ?? []) {
     if (payment.entry_id) paymentByEntry.set(payment.entry_id, payment);
+    if (payment.user_id) paymentByUser.set(payment.user_id, payment);
   }
+
+  const amountOf = (payment: PaymentRow | undefined, key: "ticket_amount" | "amount") =>
+    payment ? Number(payment[key] ?? 0) : 0;
+  const ticketOf = (payment: PaymentRow | undefined) =>
+    payment?.kushki_ticket_number ?? payment?.ticket ?? null;
 
   let prizePool = 0;
   let platformFee = 0;
   let totalGross = 0;
 
   const entries: FinancialEntryRecord[] = (entryRows ?? []).map((entry) => {
-    const payment = paymentByEntry.get(entry.id);
+    const payment =
+      paymentByEntry.get(entry.id) ?? paymentByUser.get(entry.user_id);
     const profile = profileById.get(entry.user_id);
+    const isPaidMember =
+      isPaid && (Boolean(payment) || activeParticipantIds.has(entry.user_id));
 
     const paymentStatus: FinancialEntryPaymentStatus = !isPaid
       ? "free"
-      : payment
+      : isPaidMember
         ? "approved"
         : "pending";
 
-    const ticketAmount = payment
-      ? Number(payment.ticket_amount)
+    const entryAmount = payment
+      ? amountOf(payment, "ticket_amount") + amountOf(payment, "amount")
       : isPaid
         ? entryFee
         : 0;
-    const platformFeeAmount = payment
-      ? Number(payment.platform_fee_amount)
+    const feeAmount = payment
+      ? Number(payment.platform_fee_amount ?? payment.service_fee ?? 0)
       : isPaid
         ? expectedFee
         : 0;
     const totalPaid = payment
-      ? Number(payment.total_paid)
+      ? Number(payment.total_paid ?? payment.amount ?? 0)
       : isPaid
         ? expectedTotal
         : 0;
 
     if (payment) {
-      prizePool += Number(payment.ticket_amount);
-      platformFee += Number(payment.platform_fee_amount);
-      totalGross += Number(payment.total_paid);
+      prizePool += amountOf(payment, "ticket_amount") + amountOf(payment, "amount");
+      platformFee += Number(payment.platform_fee_amount ?? payment.service_fee ?? 0);
+      totalGross += Number(payment.total_paid ?? payment.amount ?? 0);
     }
 
     return {
@@ -919,11 +955,10 @@ export async function getLeagueFinancialsInDb(
       playerName: profile?.display_name ?? "Jugador",
       playerEmail: profile?.email ?? undefined,
       paymentStatus,
-      ticketAmount: round2(ticketAmount),
-      platformFeeAmount: round2(platformFeeAmount),
+      ticketAmount: round2(entryAmount),
+      platformFeeAmount: round2(feeAmount),
       totalPaid: round2(totalPaid),
-      kushkiTicketNumber:
-        payment?.kushki_ticket_number ?? undefined,
+      kushkiTicketNumber: ticketOf(payment) ?? undefined,
       paidAt: payment?.created_at,
       createdAt: entry.created_at,
     };

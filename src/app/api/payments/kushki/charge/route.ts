@@ -22,13 +22,16 @@ export const runtime = "nodejs";
  * }
  *
  * On approval: the user has PAID, so the route ALWAYS returns
- * `{ success: true, message: 'Pago completado con éxito', transactionId }`.
- * The entry, the `payments` row (status 'completed'), the
- * `league_participants` membership and the `leagues.bolsa_total` refresh are
- * all written best-effort with the service-role client (`supabaseAdmin`, RLS
- * bypass) and automatic retry — a transient DB failure is logged for
- * reconciliation and never surfaced to the paying user. On decline: HTTP 400
- * `{ success: false, error: 'La tarjeta fue rechazada por el banco.' }`.
+ * `{ success: true, ticket, bolsa_total }`. The payment is inserted directly
+ * into `public.payments` with the service-role client (primary shape:
+ * amount / entry_fee / service_fee / ticket / provider, status 'completed';
+ * a legacy-shape fallback insert is attempted only if the primary errors).
+ * Every write logs an explicit SUCCESS or FAILED line (`[PAYMENT
+ * SUCCESSFULLY SAVED TO SUPABASE]` / `[CRITICAL DB INSERT FAILED]`) — errors
+ * are never swallowed. The user is upserted as an ACTIVE participant in
+ * `league_participants` and `leagues.bolsa_total` is recomputed immediately.
+ * On decline: HTTP 400 `{ success: false, error: 'La tarjeta fue rechazada
+ * por el banco.' }`.
  *
  * Every request is charged live through Kushki. Tokens that do not match the
  * expected Kushki token format are rejected with a 400 before any charge.
@@ -382,90 +385,83 @@ export async function POST(request: Request) {
     createPaidEntry(supabaseAdmin, league, userId, entryName ?? "Entrada #1"),
   );
 
-  // 2) Persist the approved payment with the service-role client. The insert
-  //    is adaptive: it tries the canonical `payments` columns (status
-  //    'completed', falling back to the legacy 'approved' marker on databases
-  //    whose check-constraint predates it), then the spec-shaped columns
-  //    (amount/entry_fee/service_fee/ticket/provider). Whichever shape the
-  //    live database accepts wins; failures are logged loudly so a payment can
-  //    never disappear silently.
-  const paymentShapes: Array<Record<string, unknown>> = [
-    {
-      league_id: leagueId,
-      user_id: userId,
-      entry_id: entryId ?? undefined,
-      ticket_amount: ticketAmount,
-      platform_fee_amount: serviceFee,
-      total_paid: totalAmount,
-      currency: CURRENCY,
-      kushki_ticket_number: ticketNumber,
-      status: "completed",
-    },
-    {
-      league_id: leagueId,
-      user_id: userId,
-      entry_id: entryId ?? undefined,
-      ticket_amount: ticketAmount,
-      platform_fee_amount: serviceFee,
-      total_paid: totalAmount,
-      currency: CURRENCY,
-      kushki_ticket_number: ticketNumber,
-      status: "approved",
-    },
-    {
-      user_id: userId,
-      league_id: leagueId,
-      amount: totalAmount,
-      entry_fee: ticketAmount,
-      service_fee: serviceFee,
-      ticket: ticketNumber,
-      status: "completed",
-      provider: "kushki",
-    },
-    {
-      user_id: userId,
-      league_id: leagueId,
-      amount: totalAmount,
-      entry_fee: ticketAmount,
-      service_fee: serviceFee,
-      ticket: ticketNumber,
-      status: "approved",
-      provider: "kushki",
-    },
-  ];
+  // 2) Persist the approved payment with the service-role client. PRIMARY
+  //    insert uses the standard `payments` columns (amount / entry_fee /
+  //    service_fee / ticket / provider, status 'completed'). If that shape is
+  //    rejected by the database (legacy schema using ticket_amount /
+  //    platform_fee_amount / total_paid / kushki_ticket_number), a
+  //    compatibility fallback insert is attempted. Every attempt logs an
+  //    explicit SUCCESS or FAILED line — nothing is ever swallowed silently.
+  const ticketId = ticketNumber ?? `TK-${Date.now()}`;
 
-  let paymentId: string | null = null;
-  for (const shape of paymentShapes) {
-    const id = await withRetry(async () => {
+  const insertPayment = async (
+    label: string,
+    payload: Record<string, unknown>,
+  ): Promise<{ ok: true; id: string } | { ok: false; error: unknown }> => {
+    try {
       const res = await supabaseAdmin
         .from("payments")
-        .insert(shape)
+        .insert([payload])
         .select()
         .single();
-      if (res.error) throw res.error;
-      return res.data.id as string;
-    });
-    if (id) {
-      paymentId = id;
+      if (res.error) return { ok: false, error: res.error };
+      return { ok: true, id: res.data.id as string };
+    } catch (err) {
+      return { ok: false, error: err };
+    }
+  };
+
+  const primaryPayload = {
+    user_id: userId,
+    league_id: leagueId,
+    amount: Number(totalAmount.toFixed(2)),
+    entry_fee: Number(ticketAmount.toFixed(2)),
+    service_fee: Number(serviceFee.toFixed(2)),
+    ticket: String(ticketId),
+    status: "completed",
+    provider: "kushki",
+  };
+
+  let paymentId: string | null = null;
+  const primary = await insertPayment("PRIMARY", primaryPayload);
+  if (primary.ok) {
+    paymentId = primary.id;
+    console.log(
+      `[PAYMENT SUCCESSFULLY SAVED TO SUPABASE] payments.id=${primary.id} ticket=${ticketId} status=completed shape=amount/entry_fee/service_fee/ticket/provider`,
+    );
+  } else {
+    console.error(
+      "[CRITICAL DB INSERT FAILED] shape=primary(amount/entry_fee/service_fee/ticket/provider):",
+      primary.error,
+    );
+    const fallbackPayload = {
+      league_id: leagueId,
+      user_id: userId,
+      entry_id: entryId ?? undefined,
+      ticket_amount: ticketAmount,
+      platform_fee_amount: serviceFee,
+      total_paid: totalAmount,
+      currency: CURRENCY,
+      kushki_ticket_number: ticketId,
+      status: "completed",
+    };
+    const fallback = await insertPayment("FALLBACK", fallbackPayload);
+    if (fallback.ok) {
+      paymentId = fallback.id;
       console.log(
-        `[PAYMENT PERSISTED] payments.id=${id} ticket=${ticketNumber} shape=${Object.keys(shape).join(",")}`,
+        `[PAYMENT SUCCESSFULLY SAVED TO SUPABASE] payments.id=${fallback.id} ticket=${ticketId} status=completed shape=ticket_amount/platform_fee_amount/total_paid/kushki_ticket_number`,
       );
-      break;
+    } else {
+      console.error(
+        "[CRITICAL DB INSERT FAILED] shape=fallback(ticket_amount/platform_fee_amount/total_paid/kushki_ticket_number):",
+        fallback.error,
+      );
     }
   }
 
-  if (!paymentId) {
-    // Never blocks the user (Step 43 guarantee) — but this MUST be loud so the
-    // operator can see the exact Postgres/PostgREST error and reconcile.
-    console.error(
-      "[CRITICAL DB ERROR] Cargo aprobado por Kushki pero el pago NO se insertó en `payments` tras 4 intentos. El usuario no fue bloqueado (membership stageada); revisa los logs y usa `npm run reconcile:payments`.",
-      { leagueId, userId, ticketNumber, totalAmount },
-    );
-  }
-
-  // 3) Stage active membership in `league_participants` (best-effort).
-  await withRetry(async () => {
-    const res = await supabaseAdmin.from("league_participants").upsert(
+  // 3) Register the user as an ACTIVE participant (`league_participants`).
+  try {
+    const lp = await supabaseAdmin.from("league_participants").upsert(
       {
         league_id: leagueId,
         user_id: userId,
@@ -475,35 +471,72 @@ export async function POST(request: Request) {
       },
       { onConflict: "league_id,user_id" },
     );
-    if (res.error) throw res.error;
-    return res;
-  });
+    if (lp.error) {
+      console.error(
+        "[CRITICAL DB ERROR] league_participants upsert falló:",
+        lp.error,
+      );
+    } else {
+      console.log("[PAYMENT] league_participants activado (upsert ok)");
+    }
+  } catch (err) {
+    console.error("[CRITICAL DB ERROR] league_participants upsert excepción:", err);
+  }
 
-  // 4) Refresh the league's `bolsa_total` (best-effort; the canonical pot is
-  //    still computed live from alive `entries` across all views).
-  await withRetry(async () => {
-    const { count } = await supabaseAdmin
-      .from("entries")
+  // 4) Recalculate `leagues.bolsa_total = active participants × entry_fee`
+  //    immediately after the payment. Prefers `league_participants`; falls
+  //    back to alive `entries` on databases without that table.
+  const leagueEntryFee = Number(league.entry_fee ?? 0);
+  let newBolsaTotal: number | null = null;
+  try {
+    const lp = await supabaseAdmin
+      .from("league_participants")
       .select("*", { count: "exact", head: true })
       .eq("league_id", leagueId)
-      .eq("status", "alive");
-    const res = await supabaseAdmin
+      .eq("status", "active");
+    let activeCount: number | null = lp.error ? null : (lp.count ?? null);
+    if (lp.error) {
+      console.warn(
+        "[kushki/charge] league_participants no disponible, usando entries:",
+        lp.error,
+      );
+    }
+    if (activeCount === null) {
+      const en = await supabaseAdmin
+        .from("entries")
+        .select("*", { count: "exact", head: true })
+        .eq("league_id", leagueId)
+        .eq("status", "alive");
+      activeCount = en.count ?? 1;
+    }
+    newBolsaTotal = (activeCount ?? 1) * leagueEntryFee;
+    const up = await supabaseAdmin
       .from("leagues")
-      .update({ bolsa_total: Number(league.entry_fee ?? 0) * (count ?? 1) })
+      .update({ bolsa_total: newBolsaTotal })
       .eq("id", leagueId);
-    if (res.error) throw res.error;
-    return res;
-  });
+    if (up.error) {
+      console.error(
+        "[CRITICAL DB ERROR] No se pudo actualizar leagues.bolsa_total:",
+        up.error,
+      );
+    } else {
+      console.log(`[PAYMENT] bolsa_total actualizada = ${newBolsaTotal}`);
+    }
+  } catch (err) {
+    console.error("[CRITICAL DB ERROR] No se pudo actualizar leagues.bolsa_total:", err);
+  }
 
   // 5) ALWAYS return success after Kushki approval — the user paid.
   return NextResponse.json(
     {
       success: true,
       message: "Pago completado con éxito",
-      transactionId: ticketNumber,
-      ticketNumber,
+      transactionId: ticketId,
+      ticket: ticketId,
+      ticketNumber: ticketId,
       entryId: entryId ?? undefined,
       paymentId: paymentId ?? undefined,
+      bolsa_total: newBolsaTotal,
     },
     { status: 200 },
   );
