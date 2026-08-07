@@ -16,12 +16,15 @@ import {
 import { Badge, Button, Card } from "@/components/ui";
 import {
   getCurrentUser,
+  getUserCommissionedLeaguesInDb,
   getUserEnrolledLeaguesInDb,
   type EnrolledLeague,
 } from "@/lib/services/survivor-db";
 import { ACTIVE_WEEK, SEASON_YEAR, getTeam } from "@/lib/mock-survivor-data";
 import { formatMxn } from "@/lib/survivor-utils";
 import type { NFLTeamId } from "@/types";
+
+type MyLeaguesTab = "activas" | "comisionado" | "finalizadas";
 
 function pickLabel(pick?: NFLTeamId): string {
   if (!pick) return "Sin pick esta semana";
@@ -40,6 +43,9 @@ function LeagueCard({
       ? Math.round((league.remainingEntries / league.totalEntries) * 100)
       : 0;
 
+  // Commissioner who hasn't joined their own league yet (e.g. unpaid paid league).
+  const notJoined = league.isCommissioner && league.userEntriesCount === 0;
+
   return (
     <Card variant="elevated" className="p-5 space-y-4 flex flex-col">
       <div className="flex items-start justify-between gap-2">
@@ -49,9 +55,11 @@ function LeagueCard({
           </h3>
           <p className="text-xs text-text-secondary truncate mt-0.5">
             Temporada {SEASON_YEAR}
-            {league.userEntriesCount > 1
-              ? ` · ${league.userEntriesCount} entradas`
-              : ` · ${league.entryName}`}
+            {notJoined
+              ? " · Sin entrada todavía"
+              : league.userEntriesCount > 1
+                ? ` · ${league.userEntriesCount} entradas`
+                : ` · ${league.entryName}`}
           </p>
         </div>
         {league.isCommissioner ? (
@@ -68,7 +76,12 @@ function LeagueCard({
 
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          {league.isAlive ? (
+          {notJoined ? (
+            <Badge variant="default">
+              <span className="w-1.5 h-1.5 rounded-full bg-text-secondary" />
+              Sin entrada
+            </Badge>
+          ) : league.isAlive ? (
             <Badge variant="success">
               <span className="w-1.5 h-1.5 rounded-full bg-success" />
               Vivo
@@ -103,17 +116,35 @@ function LeagueCard({
       </div>
 
       {/* Current week pick */}
-      <div className="rounded-xl bg-surface border border-border px-3.5 py-2.5">
-        <p className="text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
-          Pick de la Semana {ACTIVE_WEEK}
-        </p>
-        <p className="text-sm font-semibold text-text-primary mt-0.5">
-          {pickLabel(league.currentWeekPick)}
-        </p>
-      </div>
+      {!notJoined && (
+        <div className="rounded-xl bg-surface border border-border px-3.5 py-2.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wider text-text-secondary">
+            Pick de la Semana {ACTIVE_WEEK}
+          </p>
+          <p className="text-sm font-semibold text-text-primary mt-0.5">
+            {pickLabel(league.currentWeekPick)}
+          </p>
+        </div>
+      )}
 
       <div className="mt-auto pt-1">
-        {actionable ? (
+        {notJoined ? (
+          <Link
+            href={
+              league.leagueType === "paid"
+                ? `/join/${league.leagueId}?checkout=true`
+                : `/join/${league.leagueId}`
+            }
+            className="block"
+          >
+            <Button variant="accent" size="md" className="w-full">
+              {league.leagueType === "paid"
+                ? "Pagar Entrada y Activar"
+                : "Unirme a Mi Liga"}
+              <ArrowRight className="w-4 h-4" />
+            </Button>
+          </Link>
+        ) : actionable ? (
           <Link href={`/league/${league.leagueId}`} className="block">
             <Button variant="primary" size="md" className="w-full">
               Hacer Pick
@@ -133,15 +164,56 @@ function LeagueCard({
   );
 }
 
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={`flex-1 px-4 py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 focus-ring ${
+        active
+          ? "bg-primary/15 text-accent border border-primary/30 shadow-glow"
+          : "text-text-secondary hover:text-text-primary hover:bg-surface border border-transparent"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
 export default function MyLeaguesPage() {
   const [loading, setLoading] = useState(true);
   const [leagues, setLeagues] = useState<EnrolledLeague[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<MyLeaguesTab>("activas");
 
   useEffect(() => {
     let cancelled = false;
     getCurrentUser()
-      .then((user) => (user ? getUserEnrolledLeaguesInDb(user.id) : []))
+      .then(async (user) => {
+        if (!user) return [];
+        // Merge leagues the user plays in with leagues they commission
+        // (including leagues they haven't joined yet). Dedupe by league id,
+        // preferring the enrolled row which carries real entry data.
+        const [enrolled, commissioned] = await Promise.all([
+          getUserEnrolledLeaguesInDb(user.id),
+          getUserCommissionedLeaguesInDb(user.id),
+        ]);
+        const byId = new Map<string, EnrolledLeague>();
+        for (const row of enrolled) byId.set(row.leagueId, row);
+        for (const row of commissioned) {
+          if (!byId.has(row.leagueId)) byId.set(row.leagueId, row);
+        }
+        return [...byId.values()];
+      })
       .then((rows) => {
         if (!cancelled) setLeagues(rows);
       })
@@ -163,11 +235,27 @@ export default function MyLeaguesPage() {
   }, []);
 
   const activeLeagues = leagues.filter(
-    (league) => league.leagueStatus === "active" && league.isAlive,
+    (league) => league.leagueStatus === "active",
   );
-  const endedLeagues = leagues.filter(
-    (league) => league.leagueStatus !== "active" || !league.isAlive,
+  const commissionerLeagues = leagues.filter(
+    (league) => league.isCommissioner,
   );
+  const endedPlayerLeagues = leagues.filter(
+    (league) => league.leagueStatus !== "active" && !league.isCommissioner,
+  );
+
+  const visibleLeagues =
+    tab === "activas"
+      ? activeLeagues
+      : tab === "comisionado"
+        ? commissionerLeagues
+        : endedPlayerLeagues;
+
+  const tabCounts: Record<MyLeaguesTab, number> = {
+    activas: activeLeagues.length,
+    comisionado: commissionerLeagues.length,
+    finalizadas: endedPlayerLeagues.length,
+  };
 
   if (loading) {
     return (
@@ -206,8 +294,8 @@ export default function MyLeaguesPage() {
             <p className="text-text-secondary mt-2">
               Temporada {SEASON_YEAR} · {activeLeagues.length} activa
               {activeLeagues.length === 1 ? "" : "s"}
-              {endedLeagues.length > 0
-                ? ` · ${endedLeagues.length} finalizada${endedLeagues.length === 1 ? "" : "s"}`
+              {commissionerLeagues.length > 0
+                ? ` · ${commissionerLeagues.length} como comisionado`
                 : ""}
             </p>
           </div>
@@ -264,58 +352,79 @@ export default function MyLeaguesPage() {
           </Card>
         ) : (
           <>
-            {/* Active leagues */}
-            <section className="space-y-4">
-              <div className="flex items-center gap-3">
-                <span className="w-8 h-8 rounded-lg bg-success/15 border border-success/30 flex items-center justify-center">
-                  <Trophy className="w-4 h-4 text-success" />
-                </span>
-                <h2 className="text-xl font-bold text-text-primary">
-                  Ligas Activas
-                </h2>
-              </div>
+            {/* Tabs */}
+            <div className="flex flex-col sm:flex-row gap-2">
+              <TabButton
+                active={tab === "activas"}
+                onClick={() => setTab("activas")}
+              >
+                Ligas Activas ({tabCounts.activas})
+              </TabButton>
+              <TabButton
+                active={tab === "comisionado"}
+                onClick={() => setTab("comisionado")}
+              >
+                Mis Ligas como Comisionado ({tabCounts.comisionado})
+              </TabButton>
+              {endedPlayerLeagues.length > 0 && (
+                <TabButton
+                  active={tab === "finalizadas"}
+                  onClick={() => setTab("finalizadas")}
+                >
+                  Finalizadas ({tabCounts.finalizadas})
+                </TabButton>
+              )}
+            </div>
 
-              {activeLeagues.length === 0 ? (
+            {/* Tab content */}
+            <section className="space-y-4">
+              {visibleLeagues.length === 0 ? (
                 <Card className="text-center py-10">
                   <p className="text-sm text-text-secondary">
-                    No tienes ligas activas en este momento.
+                    {tab === "activas"
+                      ? "No tienes ligas activas en este momento."
+                      : tab === "comisionado"
+                        ? "Aún no comisiones ninguna liga."
+                        : "No tienes ligas finalizadas."}
                   </p>
                 </Card>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {activeLeagues.map((league) => (
+                  {visibleLeagues.map((league) => (
                     <LeagueCard
                       key={league.leagueId}
                       league={league}
-                      actionable
+                      actionable={tab === "activas" && league.isAlive}
                     />
                   ))}
                 </div>
               )}
             </section>
 
-            {/* Ended / eliminated leagues */}
-            {endedLeagues.length > 0 && (
-              <section className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <span className="w-8 h-8 rounded-lg bg-surface-elevated border border-border flex items-center justify-center">
-                    <CalendarX className="w-4 h-4 text-text-secondary" />
-                  </span>
-                  <h2 className="text-xl font-bold text-text-primary">
-                    Finalizadas / Eliminado
-                  </h2>
-                </div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                  {endedLeagues.map((league) => (
-                    <LeagueCard
-                      key={league.leagueId}
-                      league={league}
-                      actionable={false}
-                    />
-                  ))}
-                </div>
-              </section>
-            )}
+            {/* Ended / eliminated sub-section inside the active tab */}
+            {tab === "activas" &&
+              activeLeagues.length > 0 &&
+              endedPlayerLeagues.length > 0 && (
+                <section className="space-y-4">
+                  <div className="flex items-center gap-3">
+                    <span className="w-8 h-8 rounded-lg bg-surface-elevated border border-border flex items-center justify-center">
+                      <CalendarX className="w-4 h-4 text-text-secondary" />
+                    </span>
+                    <h2 className="text-xl font-bold text-text-primary">
+                      Finalizadas / Eliminado
+                    </h2>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {endedPlayerLeagues.map((league) => (
+                      <LeagueCard
+                        key={league.leagueId}
+                        league={league}
+                        actionable={false}
+                      />
+                    ))}
+                  </div>
+                </section>
+              )}
           </>
         )}
       </div>

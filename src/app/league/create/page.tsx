@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Dices, Sparkles } from "lucide-react";
 import { Button, Card, useToast } from "@/components/ui";
 import { createLeagueInDb } from "@/lib/services/survivor-db";
+import { useAuthGate } from "@/hooks/useAuthGate";
 import { getSupabaseEnv } from "@/lib/supabase/client";
 import { SEASON_YEAR } from "@/lib/mock-survivor-data";
 
@@ -27,6 +28,7 @@ const inputClass =
 export default function CreateLeaguePage() {
   const router = useRouter();
   const { success, error: toastError } = useToast();
+  const requireAuth = useAuthGate();
 
   const [leagueName, setLeagueName] = useState("");
   const [capacityMode, setCapacityMode] = useState<string>("50");
@@ -60,6 +62,12 @@ export default function CreateLeaguePage() {
         setError("Ingresa una capacidad válida (entre 1 y 10,000 jugadores).");
         return;
       }
+    }
+
+    // Mandatory sign-in: guests are sent to the login modal.
+    if (!requireAuth()) {
+      setError("Inicia sesión para crear tu liga.");
+      return;
     }
 
     setError(null);

@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useRef, useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Menu, X } from "lucide-react";
+import { ChevronDown, LogOut, Menu, UserRound, X } from "lucide-react";
 import { FootballIcon } from "@/components/ui";
 import { MyLeaguesDropdown } from "@/components/navigation/MyLeaguesDropdown";
-import { SEASON_YEAR } from "@/lib/mock-survivor-data";
-import { getCurrentUser, type CurrentUser } from "@/lib/services/survivor-db";
+import { useAuth } from "@/context/AuthContext";
 
 const NAV_LINKS = [
   { href: "/", label: "Explorar Ligas" },
@@ -21,44 +20,60 @@ const linkClass =
 
 export function Navbar() {
   const pathname = usePathname();
+  const { profile, isGuest, loading, openAuth, signOut } = useAuth();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [user, setUser] = useState<CurrentUser | null>(null);
+  const [accountOpen, setAccountOpen] = useState(false);
+  const accountRef = useRef<HTMLDivElement>(null);
+
+  // Close the account menu on outside click / Escape.
+  useEffect(() => {
+    if (!accountOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setAccountOpen(false);
+    };
+    const onDown = (e: MouseEvent) => {
+      if (accountRef.current && !accountRef.current.contains(e.target as Node)) {
+        setAccountOpen(false);
+      }
+    };
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("mousedown", onDown);
+    return () => {
+      document.removeEventListener("keydown", onKey);
+      document.removeEventListener("mousedown", onDown);
+    };
+  }, [accountOpen]);
 
   useEffect(() => {
-    let cancelled = false;
-    getCurrentUser()
-      .then((curr) => {
-        if (!cancelled) setUser(curr);
-      })
-      .catch(() => {
-        if (!cancelled) setUser(null);
-      });
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
+    const close = setTimeout(() => setAccountOpen(false), 0);
+    return () => clearTimeout(close);
+  }, [pathname]);
 
   const isActive = (href: string) =>
     href === "/"
       ? pathname === "/"
       : pathname === href || pathname.startsWith(href);
 
-  const displayName = user?.displayName || user?.email?.split("@")[0] || "Jugador";
-  const avatarInitial = (displayName[0] || "J").toUpperCase();
+  const displayName = profile?.displayName || "Mi Cuenta";
+  const avatarInitial = (profile?.displayName?.[0] || "L").toUpperCase();
 
   return (
-    <header className="sticky top-0 z-40 border-b border-border/50 backdrop-blur-md bg-background/80">
+    <header className="sticky top-0 z-50 bg-zinc-950/80 backdrop-blur-md border-b border-zinc-800/80">
       <nav className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
         {/* Brand */}
-        <Link href="/" className="flex items-center gap-3 focus-ring rounded-xl">
+        <Link
+          href="/"
+          className="flex items-center gap-2.5 focus-ring rounded-xl"
+        >
           <span className="w-9 h-9 rounded-lg bg-primary flex items-center justify-center shadow-glow shrink-0">
             <FootballIcon className="w-5 h-5 text-white" />
           </span>
-          <span className="text-lg font-bold tracking-tight text-text-primary whitespace-nowrap">
-            Lippu <span className="text-primary">Survivor</span>{" "}
-            <span className="hidden sm:inline text-sm font-medium text-text-secondary">
-              {SEASON_YEAR}
+          <span className="flex items-center gap-2 whitespace-nowrap">
+            <span className="text-lg font-black tracking-tight bg-gradient-to-r from-white via-white to-primary bg-clip-text text-transparent">
+              LIPPU SURVIVOR
+            </span>
+            <span className="px-2 py-0.5 text-xs font-semibold rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20">
+              2026
             </span>
           </span>
         </Link>
@@ -84,20 +99,79 @@ export function Navbar() {
           )}
         </div>
 
-        {/* User pill */}
+        {/* Right side: sign-in state */}
         <div className="hidden md:flex items-center gap-3">
-          <div
-            className="inline-flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-surface-elevated border border-border hover:border-primary/40 transition-all duration-200 focus-ring"
-            title={user?.email ? `Conectado como ${user.email}` : "Perfil de usuario"}
-          >
-            <span className="relative flex items-center justify-center w-8 h-8 rounded-full bg-primary/20 text-xs font-bold text-accent">
-              {avatarInitial}
-              <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-success border-2 border-surface-elevated" />
-            </span>
-            <span className="text-sm font-semibold text-text-primary">
-              {displayName}
-            </span>
-          </div>
+          {loading ? null : isGuest ? (
+            <button
+              type="button"
+              onClick={openAuth}
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-primary text-white text-sm font-semibold hover:bg-primary-hover shadow-glow transition-all duration-200 focus-ring"
+            >
+              <UserRound className="w-4 h-4" />
+              Iniciar Sesión
+            </button>
+          ) : (
+            <div ref={accountRef} className="relative">
+              <button
+                type="button"
+                onClick={() => setAccountOpen((prev) => !prev)}
+                aria-expanded={accountOpen}
+                aria-haspopup="menu"
+                className="inline-flex items-center gap-2.5 px-3 py-1.5 rounded-full bg-surface-elevated border border-border hover:border-primary/40 transition-all duration-200 focus-ring"
+                title={profile?.email ? `Conectado como ${profile.email}` : "Mi cuenta"}
+              >
+                <span className="relative flex items-center justify-center w-8 h-8 rounded-full bg-primary/20 text-xs font-bold text-accent">
+                  {avatarInitial}
+                  <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-success border-2 border-surface-elevated" />
+                </span>
+                <span className="text-sm font-semibold text-text-primary max-w-[140px] truncate">
+                  {displayName}
+                </span>
+                <ChevronDown
+                  className={`w-3.5 h-3.5 text-text-secondary transition-transform duration-200 ${
+                    accountOpen ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+
+              {accountOpen && (
+                <div
+                  role="menu"
+                  className="absolute right-0 top-full mt-2 w-56 rounded-2xl border border-border bg-surface-elevated shadow-elevated z-50 overflow-hidden animate-fade-in"
+                >
+                  <div className="px-4 py-3 border-b border-border">
+                    <p className="text-sm font-bold text-text-primary truncate">
+                      {displayName}
+                    </p>
+                    <p className="text-xs text-text-secondary truncate mt-0.5">
+                      {profile?.email ?? ""}
+                    </p>
+                  </div>
+                  <div className="p-1.5 space-y-0.5">
+                    <Link
+                      href="/my-leagues"
+                      onClick={() => setAccountOpen(false)}
+                      className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium text-text-primary hover:bg-surface transition-colors"
+                    >
+                      <UserRound className="w-4 h-4 text-info" />
+                      Mi Cuenta
+                    </Link>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAccountOpen(false);
+                        signOut();
+                      }}
+                      className="flex items-center gap-2.5 w-full px-3 py-2.5 rounded-xl text-sm font-medium text-danger hover:bg-surface transition-colors"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      Cerrar Sesión
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Mobile hamburger */}
@@ -114,7 +188,7 @@ export function Navbar() {
 
       {/* Mobile menu */}
       {isMenuOpen && (
-        <div className="md:hidden border-t border-border/50 bg-surface/95 backdrop-blur-md animate-fade-in">
+        <div className="md:hidden border-t border-zinc-800/80 bg-zinc-950/95 backdrop-blur-md animate-fade-in">
           <div className="max-w-6xl mx-auto px-4 py-3 flex flex-col gap-1">
             {NAV_LINKS.map((link) => (
               <Link
@@ -130,14 +204,41 @@ export function Navbar() {
                 {link.label}
               </Link>
             ))}
-            <div className="border-t border-border/50 my-2" />
-            <div className="inline-flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold text-text-primary">
-              <span className="relative flex items-center justify-center w-8 h-8 rounded-full bg-primary/20 text-xs font-bold text-accent">
-                {avatarInitial}
-                <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-success border-2 border-surface" />
-              </span>
-              {displayName}
-            </div>
+            <div className="border-t border-zinc-800/80 my-2" />
+            {loading ? null : isGuest ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  openAuth();
+                }}
+                className="inline-flex items-center justify-center gap-2 px-3 py-2.5 rounded-xl bg-primary text-white text-sm font-semibold"
+              >
+                <UserRound className="w-4 h-4" />
+                Iniciar Sesión
+              </button>
+            ) : (
+              <div className="space-y-1">
+                <div className="inline-flex items-center gap-2.5 px-3 py-2 rounded-xl text-sm font-semibold text-text-primary">
+                  <span className="relative flex items-center justify-center w-8 h-8 rounded-full bg-primary/20 text-xs font-bold text-accent">
+                    {avatarInitial}
+                    <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 rounded-full bg-success border-2 border-surface" />
+                  </span>
+                  {displayName}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setIsMenuOpen(false);
+                    signOut();
+                  }}
+                  className="inline-flex items-center gap-2 w-full px-3 py-2 rounded-xl text-sm font-medium text-danger"
+                >
+                  <LogOut className="w-4 h-4" />
+                  Cerrar Sesión
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}

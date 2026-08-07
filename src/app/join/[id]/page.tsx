@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowRight,
   Crown,
@@ -15,12 +15,12 @@ import {
 } from "lucide-react";
 import { Badge, Button, Card, FootballIcon, Modal, useToast } from "@/components/ui";
 import { KushkiPaymentForm } from "@/components/checkout/KushkiPaymentForm";
+import { useAuthGate } from "@/hooks/useAuthGate";
+import { useAuth } from "@/context/AuthContext";
 import { SEASON_YEAR } from "@/lib/mock-survivor-data";
 import {
-  getCurrentUser,
   getLeaguePreviewInDb,
   joinLeagueInDb,
-  type CurrentUser,
   type LeaguePreview,
 } from "@/lib/services/survivor-db";
 import { formatMxn } from "@/lib/survivor-utils";
@@ -36,6 +36,10 @@ export default function JoinLeaguePreviewPage() {
 
   const router = useRouter();
   const { success } = useToast();
+  const requireAuth = useAuthGate();
+  const searchParams = useSearchParams();
+  const checkoutRequested = searchParams.get("checkout") === "true";
+  const { profile, isGuest, loading: authLoading } = useAuth();
 
   const [preview, setPreview] = useState<LeaguePreview | null>(null);
   const [loading, setLoading] = useState(true);
@@ -44,7 +48,11 @@ export default function JoinLeaguePreviewPage() {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [paymentOpen, setPaymentOpen] = useState(false);
-  const [paymentUser, setPaymentUser] = useState<CurrentUser | null>(null);
+  const [paymentUser, setPaymentUser] = useState<{
+    id: string;
+    email: string;
+    displayName: string;
+  } | null>(null);
 
   useEffect(() => {
     if (!leagueId) return;
@@ -70,18 +78,36 @@ export default function JoinLeaguePreviewPage() {
     };
   }, [leagueId]);
 
+  // Auto-open checkout when arriving from a paid-league CTA (?checkout=true).
+  // Guests are sent to the login modal first; once they sign in (or come back
+  // from the OAuth redirect), this re-runs and opens the payment form.
+  useEffect(() => {
+    if (!checkoutRequested || authLoading || !preview) return;
+    const run = setTimeout(() => {
+      if (isGuest) {
+        requireAuth();
+        return;
+      }
+      if (profile) {
+        setPaymentUser({
+          id: profile.id,
+          email: profile.email,
+          displayName: profile.displayName,
+        });
+        setPaymentOpen(true);
+      }
+    }, 0);
+    return () => clearTimeout(run);
+  }, [checkoutRequested, authLoading, isGuest, profile, preview, requireAuth]);
+
   const handleFreeJoin = async () => {
     if (!preview) return;
+    // Mandatory sign-in: guests are sent to the login modal.
+    if (!requireAuth()) return;
     setError(null);
     setSubmitting(true);
 
-    let user = null;
-    try {
-      user = await getCurrentUser();
-    } catch {
-      user = null;
-    }
-    if (!user) {
+    if (!profile) {
       setSubmitting(false);
       setError("No se pudo iniciar sesión para unirte. Intenta de nuevo.");
       return;
@@ -90,7 +116,7 @@ export default function JoinLeaguePreviewPage() {
     try {
       await joinLeagueInDb(
         preview.league.id,
-        user.id,
+        profile.id,
         entryName.trim() || "Entrada #1",
       );
       setSubmitting(false);
@@ -110,22 +136,22 @@ export default function JoinLeaguePreviewPage() {
 
   const handlePaidContinue = async () => {
     if (!preview) return;
+    // Mandatory sign-in: guests are sent to the login modal before paying.
+    if (!requireAuth()) return;
     setError(null);
 
-    let user = null;
-    try {
-      user = await getCurrentUser();
-    } catch {
-      user = null;
-    }
-    if (!user) {
+    if (!profile) {
       setError(
         "No se pudo iniciar sesión para completar el pago. Intenta de nuevo.",
       );
       return;
     }
 
-    setPaymentUser(user);
+    setPaymentUser({
+      id: profile.id,
+      email: profile.email,
+      displayName: profile.displayName,
+    });
     setPaymentOpen(true);
   };
 

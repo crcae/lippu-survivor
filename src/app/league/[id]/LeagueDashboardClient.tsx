@@ -5,6 +5,7 @@ import Link from "next/link";
 import { SearchX, Sparkles, Trophy } from "lucide-react";
 
 import { useToast } from "@/components/ui";
+import { useAuthGate } from "@/hooks/useAuthGate";
 import {
   MobileNav,
   type MobileNavTab,
@@ -82,6 +83,7 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
   const isDemo = leagueId === "demo";
 
   const { success, error: toastError } = useToast();
+  const requireAuth = useAuthGate();
 
   const [now, setNow] = useState<number | null>(null);
   const [currentWeek, setCurrentWeek] = useState<number>(
@@ -430,6 +432,8 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
 
   const handleConfirmPick = async () => {
     if (pendingPickTeamId === null) return;
+    // Mandatory sign-in: guests are sent to the login modal before picking.
+    if (!requireAuth()) return;
     const week = currentWeek;
     const teamId = pendingPickTeamId;
 

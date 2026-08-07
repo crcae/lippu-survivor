@@ -16,6 +16,7 @@ import {
 import { Button, Card, useToast } from "@/components/ui";
 import { SEASON_YEAR } from "@/lib/mock-survivor-data";
 import { createLeagueInDb } from "@/lib/services/survivor-db";
+import { useAuthGate } from "@/hooks/useAuthGate";
 import { APP_BASE_URL, formatMxn } from "@/lib/survivor-utils";
 
 const CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -38,6 +39,7 @@ type LeagueType = "free" | "paid";
 export default function CreateLeaguePage() {
   const router = useRouter();
   const { success, error: toastError } = useToast();
+  const requireAuth = useAuthGate();
 
   const [leagueName, setLeagueName] = useState("");
   const [leagueType, setLeagueType] = useState<LeagueType>("free");
@@ -64,6 +66,12 @@ export default function CreateLeaguePage() {
     }
     if (leagueType === "paid" && entryFeeNumber <= 0) {
       setError("Ingresa un costo por entrada válido para la liga de paga.");
+      return;
+    }
+
+    // Mandatory sign-in: guests are sent to the login modal.
+    if (!requireAuth()) {
+      setError("Inicia sesión para crear tu liga.");
       return;
     }
 

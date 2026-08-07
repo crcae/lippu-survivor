@@ -1140,6 +1140,84 @@ export async function getUserEnrolledLeaguesInDb(
   });
 }
 
+/**
+ * Loads every league the current user is commissioner of, whether or not they
+ * have joined it yet (e.g. a paid league still awaiting the owner's entry
+ * payment). Leagues where the user already has an entry are returned here too;
+ * callers should merge with `getUserEnrolledLeaguesInDb` and dedupe by
+ * `leagueId`, preferring the enrolled row (which carries the real entry data).
+ */
+export async function getUserCommissionedLeaguesInDb(
+  userId: string,
+): Promise<EnrolledLeague[]> {
+  const supabase = createClient();
+
+  const { data: leagueRows, error: leaguesError } = (await supabase
+    .from("leagues")
+    .select("*")
+    .eq("owner_id", userId)) as {
+    data: LeagueRow[] | null;
+    error: Error | null;
+  };
+  if (leaguesError) throw leaguesError;
+  if (!leagueRows || leagueRows.length === 0) return [];
+
+  const leagueIds = leagueRows.map((row) => row.id);
+
+  // League-wide progress: total vs alive entries, across all entries.
+  const { data: allEntryRows } = (await supabase
+    .from("entries")
+    .select("league_id, status")
+    .in("league_id", leagueIds)) as {
+    data: { league_id: string; status: EntryStatus }[] | null;
+  };
+
+  const totalByLeague = new Map<string, number>();
+  const aliveByLeague = new Map<string, number>();
+  for (const entry of allEntryRows ?? []) {
+    totalByLeague.set(
+      entry.league_id,
+      (totalByLeague.get(entry.league_id) ?? 0) + 1,
+    );
+    if (entry.status === "alive") {
+      aliveByLeague.set(
+        entry.league_id,
+        (aliveByLeague.get(entry.league_id) ?? 0) + 1,
+      );
+    }
+  }
+
+  const result: EnrolledLeague[] = [];
+  for (const leagueRow of leagueRows) {
+    const league = mapLeague(leagueRow);
+    // Synthetic entry row: callers merge with `getUserEnrolledLeaguesInDb`,
+    // which supplies the real entry data when the owner has joined their own
+    // league. Leagues the owner hasn't joined yet show here without an entry.
+    result.push({
+      leagueId: league.id,
+      leagueName: league.name,
+      leagueStatus: league.status,
+      leagueType: league.leagueType,
+      entryFee: league.entryFee,
+      entryId: "",
+      entryName: "Sin entrada todavía",
+      isCommissioner: true,
+      isAlive: true,
+      currentWeekPick: undefined,
+      totalEntries: totalByLeague.get(league.id) ?? 0,
+      remainingEntries: aliveByLeague.get(league.id) ?? 0,
+      userEntriesCount: 0,
+    });
+  }
+
+  return result.sort((a, b) => {
+    if (a.leagueStatus !== b.leagueStatus) {
+      return a.leagueStatus === "active" ? -1 : 1;
+    }
+    return a.leagueName.localeCompare(b.leagueName);
+  });
+}
+
 // ── Dashboard ───────────────────────────────────────────────────────────────
 
 const GAMES_CACHE_TTL_MS = 60_000;

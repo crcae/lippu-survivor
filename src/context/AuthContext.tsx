@@ -2,6 +2,7 @@
 
 import {
   createContext,
+  useCallback,
   useContext,
   useEffect,
   useMemo,
@@ -11,6 +12,7 @@ import {
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 
 import { createClient } from "@/lib/supabase/client";
+import { AuthModal } from "@/components/auth/AuthModal";
 import {
   getLocalGuestId,
   readLocalGuestId,
@@ -28,6 +30,18 @@ export interface AuthContextValue {
   profile: AuthProfile | null;
   loading: boolean;
   supabase: SupabaseClient | null;
+  /** True when there is no real (Google/email) session — guest/demo mode. */
+  isGuest: boolean;
+  /** True when the user signed in with a real account (has an email). */
+  isAuthenticated: boolean;
+  /** Opens the global login/sign-up modal. */
+  openAuth: () => void;
+  /** Closes the global login/sign-up modal. */
+  closeAuth: () => void;
+  /** Whether the login modal is currently open. */
+  authOpen: boolean;
+  /** Signs out the current session (no-op when already a guest). */
+  signOut: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
@@ -71,6 +85,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [profile, setProfile] = useState<AuthProfile | null>(null);
   const [loading, setLoading] = useState(() => supabase !== null);
+  const [authOpen, setAuthOpen] = useState(false);
+
+  const openAuth = useCallback(() => setAuthOpen(true), []);
+  const closeAuth = useCallback(() => setAuthOpen(false), []);
+
+  const signOut = useCallback(() => {
+    void supabase?.auth.signOut();
+    setUser(null);
+    setProfile(null);
+  }, [supabase]);
 
   useEffect(() => {
     if (!supabase) return;
@@ -163,12 +187,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, [supabase]);
 
-  const value = useMemo(
-    () => ({ user, profile, loading, supabase }),
-    [user, profile, loading, supabase],
-  );
+  const value = useMemo<AuthContextValue>(() => {
+    const isGuest =
+      user === null || user.is_anonymous === true || !user.email;
+    return {
+      user,
+      profile,
+      loading,
+      supabase,
+      isGuest,
+      isAuthenticated: !isGuest,
+      openAuth,
+      closeAuth,
+      authOpen,
+      signOut,
+    };
+  }, [user, profile, loading, supabase, openAuth, closeAuth, authOpen, signOut]);
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+      <AuthModal isOpen={authOpen} onClose={closeAuth} supabase={supabase} />
+    </AuthContext.Provider>
+  );
 }
 
 export function useAuth(): AuthContextValue {
