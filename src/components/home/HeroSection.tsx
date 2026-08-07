@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRight, Compass } from "lucide-react";
+import { ArrowRight, Compass, Trophy } from "lucide-react";
 import { SEASON_YEAR } from "@/lib/mock-survivor-data";
 
 /**
@@ -27,11 +27,7 @@ export function HeroSection() {
         {/* Micro-badge */}
         <div className="flex justify-center mb-8 animate-fade-in-up">
           <div className="inline-flex items-center px-3 py-1.5 rounded-full bg-primary/10 border border-primary/30 text-xs text-accent">
-            <img
-              src="/lippu-survivor-favicon.png"
-              alt="Lippu"
-              className="w-4 h-4 rounded-md object-contain inline-block mr-2 align-middle"
-            />
+            <Trophy className="w-4 h-4 text-purple-400 inline-block mr-1.5" />
             NFL Survivor Pool — Temporada {SEASON_YEAR}
           </div>
         </div>
