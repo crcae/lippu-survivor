@@ -270,7 +270,9 @@ export default function JoinLeaguePage() {
                   <Trophy className="w-4 h-4 text-warning mx-auto mb-1" />
                   <p className="text-base font-bold text-text-primary">
                     {isPaid
-                      ? formatMoney(entryFee * (validatedLeague.entryCount || 1))
+                      ? formatMoney(
+                          entryFee * (validatedLeague.activeParticipants || 1),
+                        )
                       : "—"}
                   </p>
                   <p className="text-[10px] text-text-secondary">Premio Pool</p>

@@ -26,7 +26,6 @@ interface CommissionerFinancePanelProps {
   leagueName: string;
   leagueStatus: LeagueStatus;
   leagueType?: "paid" | "free";
-  platformFeePercent: number;
   /** The current user's id (must be the league owner — the panel is only
    *  rendered for the commissioner). */
   currentUserId: string;
@@ -57,10 +56,9 @@ const kpiCardClass =
 function PaymentStatusBadge({ status }: { status: FinancialEntryRecord["paymentStatus"] }) {
   if (status === "approved") {
     return (
-      <Badge variant="success" className="whitespace-nowrap">
-        <span className="w-1.5 h-1.5 rounded-full bg-success" />
-        Pagado
-      </Badge>
+      <span className="px-2 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 whitespace-nowrap">
+        Completado
+      </span>
     );
   }
   if (status === "pending") {
@@ -90,7 +88,6 @@ export function CommissionerFinancePanel({
   leagueName,
   leagueStatus,
   leagueType,
-  platformFeePercent,
   currentUserId,
 }: CommissionerFinancePanelProps) {
   const { success, error: toastError } = useToast();
@@ -339,11 +336,8 @@ export function CommissionerFinancePanel({
                       <th className="py-2.5 pr-4 text-[10px] font-semibold uppercase tracking-wider text-text-secondary whitespace-nowrap text-right">
                         Monto Entrada
                       </th>
-                      <th className="py-2.5 pr-4 text-[10px] font-semibold uppercase tracking-wider text-text-secondary whitespace-nowrap text-right">
-                        Fee ({financials?.platformFeePercent ?? platformFeePercent}%)
-                      </th>
                       <th className="py-2.5 pr-4 text-[10px] font-semibold uppercase tracking-wider text-text-secondary whitespace-nowrap">
-                        Ticket Kushki
+                        Ticket
                       </th>
                       <th className="py-2.5 text-[10px] font-semibold uppercase tracking-wider text-text-secondary whitespace-nowrap">
                         Fecha
@@ -369,9 +363,6 @@ export function CommissionerFinancePanel({
                         </td>
                         <td className="py-3 pr-4 text-right tabular-nums text-text-primary whitespace-nowrap">
                           {formatMxn(entry.ticketAmount)}
-                        </td>
-                        <td className="py-3 pr-4 text-right tabular-nums text-text-secondary whitespace-nowrap">
-                          {formatMxn(entry.platformFeeAmount)}
                         </td>
                         <td className="py-3 pr-4">
                           {entry.kushkiTicketNumber ? (

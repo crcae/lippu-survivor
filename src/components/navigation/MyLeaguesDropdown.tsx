@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
@@ -41,7 +41,10 @@ export function MyLeaguesDropdown() {
   const [loaded, setLoaded] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
+  // (Re)loads the user's leagues. Re-runs whenever the pathname changes so the
+  // dropdown reflects a freshly joined/created league immediately after the
+  // navigation that follows (no reload required).
+  const loadLeagues = useCallback(() => {
     let cancelled = false;
     getCurrentUser()
       .then(async (user) => {
@@ -74,6 +77,11 @@ export function MyLeaguesDropdown() {
       cancelled = true;
     };
   }, []);
+
+  useEffect(() => {
+    const cancel = loadLeagues();
+    return cancel;
+  }, [loadLeagues, pathname]);
 
   // Close on outside click / Escape.
   useEffect(() => {

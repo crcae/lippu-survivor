@@ -341,7 +341,7 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
   const strikesMax = dbLeague?.strikesAllowed ?? MOCK_LEAGUE.strikesMax;
   const prizePool =
     isReal && dbLeague
-      ? Math.round((dbLeague.entryFee ?? 0) * dbLeaderboard.length)
+      ? Math.round((dbLeague.entryFee ?? 0) * remainingEntries)
       : MOCK_LEAGUE.prizePool;
 
   const picksSeed = useMemo<WeekPicks | undefined>(() => {
@@ -602,7 +602,6 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
             leagueName={dbLeague.name}
             leagueStatus={dbLeague.status}
             leagueType={dbLeague.leagueType}
-            platformFeePercent={dbLeague.platformFeePercent ?? 8}
             currentUserId={currentUser.id}
           />
         )}

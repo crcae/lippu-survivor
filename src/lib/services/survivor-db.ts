@@ -158,6 +158,7 @@ export interface LeagueEntry {
 export interface LeagueLookup {
   league: League;
   entryCount: number;
+  activeParticipants: number;
   ownerName?: string;
 }
 
@@ -499,6 +500,12 @@ export async function getLeagueByInviteCode(
     .select("*", { count: "exact", head: true })
     .eq("league_id", leagueRow.id);
 
+  const { count: activeCount } = await supabase
+    .from("entries")
+    .select("*", { count: "exact", head: true })
+    .eq("league_id", leagueRow.id)
+    .eq("status", "alive");
+
   let ownerName = "Comisionado";
   try {
     const { data: profile } = await supabase
@@ -513,7 +520,12 @@ export async function getLeagueByInviteCode(
     // Best effort profile fetch
   }
 
-  return { league: mapLeague(leagueRow), entryCount: count ?? 0, ownerName };
+  return {
+    league: mapLeague(leagueRow),
+    entryCount: count ?? 0,
+    activeParticipants: activeCount ?? 0,
+    ownerName,
+  };
 }
 
 /**

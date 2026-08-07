@@ -108,6 +108,19 @@ function LeagueCard({
         </span>
       </div>
 
+      {/* Prize pool — active participants × entry fee (matches every other view) */}
+      {league.leagueType === "paid" && league.entryFee ? (
+        <div className="flex items-center justify-between rounded-xl border border-warning/20 bg-warning/5 px-3.5 py-2.5">
+          <span className="flex items-center gap-1.5 text-xs text-text-secondary">
+            <Trophy className="w-3.5 h-3.5 text-warning" />
+            Bolsa total
+          </span>
+          <span className="text-sm font-bold text-warning tabular-nums">
+            {formatMxn(league.entryFee * league.remainingEntries)}
+          </span>
+        </div>
+      ) : null}
+
       {/* Progress: remaining participants */}
       <div className="h-1.5 rounded-full bg-surface-elevated overflow-hidden">
         <div

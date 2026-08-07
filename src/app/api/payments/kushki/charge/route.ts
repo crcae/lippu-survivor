@@ -382,34 +382,86 @@ export async function POST(request: Request) {
     createPaidEntry(supabaseAdmin, league, userId, entryName ?? "Entrada #1"),
   );
 
-  // 2) Persist the approved payment. `payments.status` is written as
-  //    'completed'; databases whose check-constraint predates that value fall
-  //    back to the legacy 'approved' marker (both mean success).
-  const persistPayment = async (
-    status: "completed" | "approved",
-  ): Promise<string | null> =>
-    withRetry(async () => {
+  // 2) Persist the approved payment with the service-role client. The insert
+  //    is adaptive: it tries the canonical `payments` columns (status
+  //    'completed', falling back to the legacy 'approved' marker on databases
+  //    whose check-constraint predates it), then the spec-shaped columns
+  //    (amount/entry_fee/service_fee/ticket/provider). Whichever shape the
+  //    live database accepts wins; failures are logged loudly so a payment can
+  //    never disappear silently.
+  const paymentShapes: Array<Record<string, unknown>> = [
+    {
+      league_id: leagueId,
+      user_id: userId,
+      entry_id: entryId ?? undefined,
+      ticket_amount: ticketAmount,
+      platform_fee_amount: serviceFee,
+      total_paid: totalAmount,
+      currency: CURRENCY,
+      kushki_ticket_number: ticketNumber,
+      status: "completed",
+    },
+    {
+      league_id: leagueId,
+      user_id: userId,
+      entry_id: entryId ?? undefined,
+      ticket_amount: ticketAmount,
+      platform_fee_amount: serviceFee,
+      total_paid: totalAmount,
+      currency: CURRENCY,
+      kushki_ticket_number: ticketNumber,
+      status: "approved",
+    },
+    {
+      user_id: userId,
+      league_id: leagueId,
+      amount: totalAmount,
+      entry_fee: ticketAmount,
+      service_fee: serviceFee,
+      ticket: ticketNumber,
+      status: "completed",
+      provider: "kushki",
+    },
+    {
+      user_id: userId,
+      league_id: leagueId,
+      amount: totalAmount,
+      entry_fee: ticketAmount,
+      service_fee: serviceFee,
+      ticket: ticketNumber,
+      status: "approved",
+      provider: "kushki",
+    },
+  ];
+
+  let paymentId: string | null = null;
+  for (const shape of paymentShapes) {
+    const id = await withRetry(async () => {
       const res = await supabaseAdmin
         .from("payments")
-        .insert({
-          league_id: leagueId,
-          user_id: userId,
-          entry_id: entryId ?? undefined,
-          ticket_amount: ticketAmount,
-          platform_fee_amount: serviceFee,
-          total_paid: totalAmount,
-          currency: CURRENCY,
-          kushki_ticket_number: ticketNumber,
-          status,
-        })
-        .select("id")
+        .insert(shape)
+        .select()
         .single();
       if (res.error) throw res.error;
       return res.data.id as string;
     });
+    if (id) {
+      paymentId = id;
+      console.log(
+        `[PAYMENT PERSISTED] payments.id=${id} ticket=${ticketNumber} shape=${Object.keys(shape).join(",")}`,
+      );
+      break;
+    }
+  }
 
-  const paymentId =
-    (await persistPayment("completed")) ?? (await persistPayment("approved"));
+  if (!paymentId) {
+    // Never blocks the user (Step 43 guarantee) — but this MUST be loud so the
+    // operator can see the exact Postgres/PostgREST error and reconcile.
+    console.error(
+      "[CRITICAL DB ERROR] Cargo aprobado por Kushki pero el pago NO se insertó en `payments` tras 4 intentos. El usuario no fue bloqueado (membership stageada); revisa los logs y usa `npm run reconcile:payments`.",
+      { leagueId, userId, ticketNumber, totalAmount },
+    );
+  }
 
   // 3) Stage active membership in `league_participants` (best-effort).
   await withRetry(async () => {
