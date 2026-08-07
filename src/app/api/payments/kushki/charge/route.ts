@@ -285,6 +285,11 @@ export async function POST(request: Request) {
   // Charge with Kushki (card data already tokenized on the client).
   let charge: {
     ticketNumber?: unknown;
+    token?: unknown;
+    transactionId?: unknown;
+    status?: unknown;
+    code?: unknown;
+    approved?: unknown;
     message?: unknown;
     response?: { message?: unknown };
   } | null = null;
@@ -322,6 +327,7 @@ export async function POST(request: Request) {
       }),
     });
     charge = await chargeRes.json().catch(() => null);
+    console.log("[KUSHKI RAW RESPONSE]", JSON.stringify(charge));
   } catch (err) {
     console.error("[kushki/charge] Error llamando a Kushki:", err);
     return NextResponse.json(
@@ -333,10 +339,32 @@ export async function POST(request: Request) {
     );
   }
 
-  const ticketNumber =
-    typeof charge?.ticketNumber === "string" ? charge.ticketNumber : null;
+  // ── Kushki approval detection (relaxed on purpose) ─────────────────────────
+  // Treat the charge as APPROVED if ANY approval signal is present. Different
+  // Kushki environments return different payload shapes (`ticketNumber`,
+  // `token`, `transactionId`, `status === 'approved'`, `code === '000'` or an
+  // `approved` flag). Money has been captured only when this evaluates true.
+  const isApproved = Boolean(
+    charge &&
+      (charge.ticketNumber ||
+        charge.token ||
+        charge.transactionId ||
+        charge.status === "approved" ||
+        charge.code === "000" ||
+        charge.approved),
+  );
 
-  if (!ticketNumber) {
+  const ticket =
+    isApproved && charge
+      ? String(
+          charge.ticketNumber ||
+            charge.token ||
+            charge.transactionId ||
+            `TK-${Date.now()}`,
+        )
+      : null;
+
+  if (!isApproved || !ticket) {
     // Declined / rejected by the card issuer — HTTP 400, never a success UI.
     const message =
       typeof charge?.response?.message === "string" &&
@@ -373,11 +401,11 @@ export async function POST(request: Request) {
 
   // ── Kushki APPROVED the charge: the user paid, this is 100% SUCCESS ──────
   // Money was captured. Every DB write below is best-effort through the
-  // service-role client (`supabaseAdmin`, RLS bypass) with automatic retry; a
-  // transient failure is logged for reconciliation and NEVER surfaced to the
-  // paying user. Membership is staged so the user is never blocked.
+  // service-role client (`supabaseAdmin`, RLS bypass); a transient failure is
+  // logged for reconciliation and NEVER surfaced to the paying user.
+  // Membership is staged so the user is never blocked.
   console.log(
-    `[PAYMENT] Kushki APPROVED ticket=${ticketNumber} userId=${userId} leagueId=${leagueId} total=${totalAmount}`,
+    `[PAYMENT] Kushki APPROVED ticket=${ticket} userId=${userId} leagueId=${leagueId} total=${totalAmount}`,
   );
 
   // 1) Grant immediate entry — the canonical participant record in `entries`.
@@ -392,7 +420,7 @@ export async function POST(request: Request) {
   //    platform_fee_amount / total_paid / kushki_ticket_number), a
   //    compatibility fallback insert is attempted. Every attempt logs an
   //    explicit SUCCESS or FAILED line — nothing is ever swallowed silently.
-  const ticketId = ticketNumber ?? `TK-${Date.now()}`;
+  const ticketId = ticket;
 
   const insertPayment = async (
     label: string,

@@ -56,7 +56,7 @@ const kpiCardClass =
 function PaymentStatusBadge({ status }: { status: FinancialEntryRecord["paymentStatus"] }) {
   if (status === "approved") {
     return (
-      <span className="px-2 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 whitespace-nowrap">
+      <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 whitespace-nowrap">
         Completado
       </span>
     );
