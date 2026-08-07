@@ -8,15 +8,16 @@ import {
   Lock,
   ShieldCheck,
 } from "lucide-react";
-import { Button, useToast } from "@/components/ui";
+import { Button } from "@/components/ui";
 import { formatMxn } from "@/lib/survivor-utils";
 
 /**
- * Kushki card checkout for paid league entries. Renders the card form, the
- * Apple Pay button (visual — only shown where `ApplePaySession` is available on
- * a secure origin; the charge goes through the card token flow) and the
+ * Kushki card checkout for paid league entries. Renders the card form and the
  * success/error status screens. Card data is tokenized on-device by the Kushki
  * SDK and only the token is sent to `/api/payments/kushki/charge`.
+ *
+ * NOTE: Apple Pay is temporarily hidden while Kushki completes subdomain
+ * verification for the merchant account.
  */
 
 const KUSHKI_PUBLIC_MERCHANT_ID = "8b4407dc16954e949b77384573dd86b7";
@@ -59,9 +60,6 @@ declare global {
       merchantId: string;
       inTestEnvironment: boolean;
     }) => KushkiInstance;
-    ApplePaySession?: {
-      supportsVersion: (version: number) => boolean;
-    };
   }
 }
 
@@ -130,8 +128,6 @@ export function KushkiPaymentForm({
   totalAmount,
   onSuccess,
 }: KushkiPaymentFormProps) {
-  const { info } = useToast();
-
   const [cardNumber, setCardNumber] = useState("");
   const [expiry, setExpiry] = useState("");
   const [cvc, setCvc] = useState("");
@@ -141,7 +137,6 @@ export function KushkiPaymentForm({
   const [status, setStatus] = useState<FormStatus>("idle");
   const [message, setMessage] = useState("");
   const [ticketNumber, setTicketNumber] = useState<string | null>(null);
-  const [applePayAvailable, setApplePayAvailable] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -151,20 +146,6 @@ export function KushkiPaymentForm({
     return () => {
       cancelled = true;
     };
-  }, []);
-
-  // Apple Pay only works on Safari with a supported ApplePaySession on a secure
-  // origin. When unavailable the button is hidden entirely instead of showing a
-  // dead control (card checkout stays the primary path).
-  useEffect(() => {
-    const check = setTimeout(() => {
-      setApplePayAvailable(
-        typeof window !== "undefined" &&
-          typeof window.ApplePaySession === "function" &&
-          window.isSecureContext === true,
-      );
-    }, 0);
-    return () => clearTimeout(check);
   }, []);
 
   const validate = (): string | null => {
@@ -267,11 +248,13 @@ export function KushkiPaymentForm({
         inTestEnvironment: IS_KUSHKI_TEST_MODE,
       });
       const [month, year2] = expiry.split("/");
-      const totalCentavos = String(Math.round(totalAmount * 100));
+      // Kushki v2 requestToken takes the amount as a float string in the
+      // currency's major unit (pesos), e.g. "2.16" — NOT minor units ("216").
+      const totalAmountStr = totalAmount.toFixed(2);
 
       kushki.requestToken(
         {
-          amount: totalCentavos,
+          amount: totalAmountStr,
           currency: "MXN",
           card: {
             name: holderName.trim(),
@@ -391,29 +374,6 @@ export function KushkiPaymentForm({
           </span>
         </div>
       </div>
-
-      {/* Apple Pay (visual, only on supported browsers/secure origins) */}
-      {applePayAvailable && (
-        <div className="space-y-3">
-          <button
-            type="button"
-            onClick={() =>
-              info("Apple Pay estará disponible próximamente. Usa tu tarjeta.")
-            }
-            className="w-full h-11 rounded-xl bg-black text-white flex items-center justify-center gap-2 font-semibold text-base hover:opacity-90 transition-opacity"
-          >
-            <svg className="w-5 h-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
-              <path d="M12.152 6.896c-.948 0-2.415-1.078-3.96-1.04-2.04.027-3.91 1.183-4.961 3.014-2.117 3.675-.546 9.103 1.519 12.09 1.013 1.454 2.208 3.09 3.792 3.03 1.52-.065 2.09-.987 3.935-.987 1.831 0 2.35.987 3.96.948 1.637-.026 2.676-1.48 3.676-2.948 1.156-1.688 1.636-3.325 1.662-3.415-.039-.013-3.182-1.221-3.22-4.857-.026-3.04 2.48-4.494 2.597-4.559-1.429-2.09-3.623-2.324-4.39-2.376-2-.156-3.675 1.09-4.61 1.09zM15.53 3.83c.843-1.012 1.4-2.427 1.245-3.83-1.207.052-2.662.805-3.532 1.818-.78.896-1.454 2.338-1.273 3.714 1.338.104 2.715-.688 3.56-1.702z" />
-            </svg>
-            Apple Pay
-          </button>
-          <div className="flex items-center gap-3">
-            <span className="flex-1 h-px bg-border" />
-            <span className="text-xs text-text-secondary">o paga con tarjeta</span>
-            <span className="flex-1 h-px bg-border" />
-          </div>
-        </div>
-      )}
 
       {/* Card fields */}
       <div className="space-y-3">

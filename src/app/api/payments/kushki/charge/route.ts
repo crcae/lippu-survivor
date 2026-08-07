@@ -35,10 +35,11 @@ const KUSHKI_PRIVATE_MERCHANT_ID =
   process.env.KUSHKI_PRIVATE_MERCHANT_ID ?? "57ab8da330bf4fcd94082346992e823e";
 const CURRENCY = "MXN";
 
-/** Kushki amounts are sent in minor units (centavos). */
-function toMinorUnits(amount: number): number {
-  return Math.round(amount * 100);
-}
+/**
+ * Kushki (Mexico) expects the charge amounts in FLOAT PESOS, not integer
+ * centavos. e.g. a $2.16 total must be sent as `subtotalIva0: 2.16`, NOT `216`
+ * — multiplying by 100 caused a $216 charge on a $2 entry.
+ */
 
 interface LeagueRow {
   id: string;
@@ -202,10 +203,12 @@ export async function POST(request: Request) {
     );
   }
 
+  // Server-side pricing — never trust the client. All values are float pesos
+  // with 2-decimal precision.
   const ticketAmount = Number(league.entry_fee ?? 0);
   const platformFeePercent = Number(league.platform_fee_percent ?? 8);
-  const platformFee = Math.round(ticketAmount * platformFeePercent) / 100;
-  const totalAmount = Math.round((ticketAmount + platformFee) * 100) / 100;
+  const serviceFee = Number((ticketAmount * (platformFeePercent / 100)).toFixed(2));
+  const totalAmount = Number((ticketAmount + serviceFee).toFixed(2));
 
   if (ticketAmount <= 0 || totalAmount <= 0) {
     return NextResponse.json(
@@ -213,6 +216,23 @@ export async function POST(request: Request) {
       { status: 400 },
     );
   }
+
+  // Safety guard: the total must never exceed the entry fee by more than the
+  // 8% service fee (plus a 1% tolerance). Abort instead of overcharging.
+  if (totalAmount > ticketAmount * 1.09) {
+    console.error(
+      `[PAYMENT] OVERCHARGE GUARD: entry=${ticketAmount}, fee=${serviceFee}, total=${totalAmount} excede el límite permitido. Cargo abortado.`,
+    );
+    return NextResponse.json(
+      { success: false, message: "El monto calculado del cargo es inválido." },
+      { status: 400 },
+    );
+  }
+
+  // Explicit breakdown log before the gateway call.
+  console.log(
+    `[PAYMENT] Entry: $${ticketAmount.toFixed(2)}, Fee (${platformFeePercent}%): $${serviceFee.toFixed(2)}, Total Charged to Kushki: $${totalAmount.toFixed(2)}`,
+  );
 
   const { count: totalEntries } = await admin
     .from("entries")
@@ -245,8 +265,8 @@ export async function POST(request: Request) {
       body: JSON.stringify({
         token,
         amount: {
-          subtotalIva: toMinorUnits(ticketAmount),
-          subtotalIva0: toMinorUnits(platformFee),
+          subtotalIva: 0,
+          subtotalIva0: totalAmount,
           ice: 0,
           iva: 0,
           currency: CURRENCY,
@@ -255,6 +275,8 @@ export async function POST(request: Request) {
           event_name: league.name,
           user_name: userName ?? "Jugador",
           base_amount: ticketAmount,
+          service_fee: serviceFee,
+          total_amount: totalAmount,
         },
         contactDetails: {
           email: userEmail ?? "jugador@lippu.app",
@@ -293,7 +315,7 @@ export async function POST(request: Request) {
         league_id: leagueId,
         user_id: userId,
         ticket_amount: ticketAmount,
-        platform_fee_amount: platformFee,
+        platform_fee_amount: serviceFee,
         total_paid: totalAmount,
         currency: CURRENCY,
         kushki_ticket_number: null,
@@ -330,7 +352,7 @@ export async function POST(request: Request) {
       user_id: userId,
       entry_id: entryId,
       ticket_amount: ticketAmount,
-      platform_fee_amount: platformFee,
+      platform_fee_amount: serviceFee,
       total_paid: totalAmount,
       currency: CURRENCY,
       kushki_ticket_number: ticketNumber,
