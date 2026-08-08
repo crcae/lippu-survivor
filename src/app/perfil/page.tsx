@@ -30,7 +30,7 @@ export default function PerfilPage() {
   const { success, error: toastError } = useToast();
 
   const [displayName, setDisplayName] = useState(
-    profile?.displayName ?? "",
+    profile?.displayName ?? profile?.display_name ?? "",
   );
   const [saving, setSaving] = useState(false);
   const [stats, setStats] = useState({
@@ -39,13 +39,20 @@ export default function PerfilPage() {
     commissioned: 0,
   });
 
-  // Keep the editor in sync when the authenticated profile changes (e.g. the
-  // auth-state listener populates `profile` after mount, or a name is saved).
-  const [lastSyncedName, setLastSyncedName] = useState(profile?.displayName ?? "");
-  if (profile?.displayName !== lastSyncedName) {
-    setLastSyncedName(profile?.displayName ?? "");
-    setDisplayName(profile?.displayName ?? "");
-  }
+  // Sync the editor when the authenticated profile arrives after mount or a
+  // name is saved. The write is deferred out of the effect body (microtask) so
+  // React never sees a synchronous cascading setState — no re-render loops.
+  const [lastSyncedName, setLastSyncedName] = useState(
+    profile?.displayName ?? profile?.display_name ?? "",
+  );
+  useEffect(() => {
+    const initialName = profile?.displayName || profile?.display_name || "";
+    if (!initialName || initialName === lastSyncedName) return;
+    queueMicrotask(() => {
+      setLastSyncedName(initialName);
+      setDisplayName(initialName);
+    });
+  }, [profile?.displayName, profile?.display_name, lastSyncedName]);
 
   // Load account stats (league counts) once the user is known.
   useEffect(() => {
@@ -91,12 +98,9 @@ export default function PerfilPage() {
     }
     setSaving(true);
     try {
-      const { error: authError } = await supabase.auth.updateUser({
-        data: { display_name: name },
-      });
-      if (authError) throw authError;
-      // Keep the profiles table in sync in case the auth-state listener missed.
-      await supabase.from("profiles").upsert(
+      // Canonical write: `public.profiles.display_name` is the source of truth
+      // consumed by leaderboards/standings/header greetings.
+      const { error: dbError } = await supabase.from("profiles").upsert(
         {
           id: user?.id,
           email: profile?.email,
@@ -105,6 +109,13 @@ export default function PerfilPage() {
         },
         { onConflict: "id" },
       );
+      if (dbError) throw dbError;
+      // Mirror into Supabase Auth metadata so `user.user_metadata.display_name`
+      // stays consistent across devices and the auth listener refreshes state.
+      const { error: authError } = await supabase.auth.updateUser({
+        data: { display_name: name },
+      });
+      if (authError) throw authError;
       success("Tu nombre se actualizó correctamente.");
     } catch (err) {
       toastError(

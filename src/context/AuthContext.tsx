@@ -23,6 +23,8 @@ export interface AuthProfile {
   id: string;
   email: string;
   displayName: string;
+  /** Mirrors `public.profiles.display_name` (DB-authoritative display name). */
+  display_name?: string;
   avatarUrl: string | null;
 }
 
@@ -54,13 +56,16 @@ function mapUserToProfile(user: User): AuthProfile {
   };
 
   const isGuest = user.is_anonymous === true || !user.email;
+  const displayName =
+    metadata.display_name ?? (isGuest ? "Guest" : user.email?.split("@")[0] ?? "Jugador");
 
   return {
     id: user.id,
     email: isGuest
       ? `anon_${user.id.replace(/-/g, "").slice(0, 12)}@lippu.app`
       : (user.email ?? ""),
-    displayName: metadata.display_name ?? (isGuest ? "Guest" : user.email?.split("@")[0] ?? "Jugador"),
+    displayName,
+    display_name: displayName,
     avatarUrl: metadata.avatar_url ?? null,
   };
 }
@@ -115,10 +120,41 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let disposed = false;
 
+    /**
+     * Reads `public.profiles.display_name` (authoritative) and merges it into
+     * the in-memory profile. Best-effort: on any failure the metadata-derived
+     * name is kept, so auth flows never break because of a DB hiccup.
+     */
+    const applyDbProfile = async (base: AuthProfile) => {
+      try {
+        const { data } = await supabase
+          .from("profiles")
+          .select("display_name, avatar_url")
+          .eq("id", base.id)
+          .maybeSingle();
+        if (disposed) return;
+        if (data?.display_name) {
+          setProfile((prev) => {
+            if (!prev || prev.id !== base.id) return prev;
+            return {
+              ...prev,
+              displayName: data.display_name,
+              display_name: data.display_name,
+              avatarUrl: data.avatar_url ?? prev.avatarUrl,
+            };
+          });
+        }
+      } catch {
+        // Best-effort read — the metadata-derived name is fine.
+      }
+    };
+
     const sync = (nextUser: User | null) => {
       if (disposed) return;
       setUser(nextUser);
-      setProfile(nextUser ? mapUserToProfile(nextUser) : null);
+      const nextProfile = nextUser ? mapUserToProfile(nextUser) : null;
+      setProfile(nextProfile);
+      if (nextProfile) void applyDbProfile(nextProfile);
     };
 
     const upsertProfile = async (nextProfile: AuthProfile) => {
@@ -150,8 +186,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const existingGuestId = readLocalGuestId();
       if (existingGuestId) {
         if (disposed) return;
-        setProfile(localGuestProfile(existingGuestId));
-        void upsertProfile(localGuestProfile(existingGuestId));
+        const guestProfile = localGuestProfile(existingGuestId);
+        setProfile(guestProfile);
+        void upsertProfile(guestProfile);
+        void applyDbProfile(guestProfile);
         return;
       }
 
@@ -171,6 +209,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const guestProfile = localGuestProfile(guestId);
       setProfile(guestProfile);
       void upsertProfile(guestProfile);
+      void applyDbProfile(guestProfile);
     };
 
     supabase.auth.getUser().then(({ data }) => {

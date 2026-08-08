@@ -692,6 +692,14 @@ export function LeagueDashboard({ leagueId }: LeagueDashboardProps) {
       <footer className="relative z-10 border-t border-border/50 bg-surface/50 backdrop-blur-sm">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 pb-24 md:pb-6 flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-text-secondary">
           <span>© {SEASON_YEAR} Lippu Survivor. Todos los derechos reservados.</span>
+          <a
+            href="https://wa.me/523322547372?text=Hola%21%20Necesito%20ayuda%20con%20mi%20liga%20en%20Lippu%20Survivor"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-sm font-semibold text-accent hover:underline transition-colors"
+          >
+            Soporte por WhatsApp
+          </a>
           <span className="text-xs text-border">survivor.lippu.app</span>
         </div>
       </footer>

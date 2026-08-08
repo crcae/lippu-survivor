@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { sendAdminAlert } from "@/lib/notifications/admin-alert";
+import { sendAdminEmail } from "@/lib/notifications/send-admin-email";
 
 export const runtime = "nodejs";
 
@@ -8,9 +8,10 @@ export const runtime = "nodejs";
  *
  * Fire-and-forget admin notification endpoint for client-side events that
  * have no server action (e.g. league creation happens in the browser via
- * `createLeagueInDb`). The client sends the event DTO and this route forwards
- * it to the admin-alert helper (Resend e-mail to `contacto@lippu.app` and/or
- * `ADMIN_WEBHOOK_URL`). Always returns 200 quickly — delivery is best-effort.
+ * `createLeagueInDb`). The client sends the event DTO and this route emails
+ * `contacto@lippu.app` through the non-blocking SMTP/Resend/log helper
+ * (`send-admin-email.ts`). Always returns 200 quickly — delivery is
+ * best-effort and never blocks league creation.
  *
  * Body:
  * {
@@ -66,7 +67,7 @@ export async function POST(request: Request) {
       .filter(Boolean)
       .join("\n");
 
-    void sendAdminAlert({
+    void sendAdminEmail({
       subject: `🛡️ Nueva liga ${mode.toLowerCase()}: ${leagueName}`,
       text,
     });

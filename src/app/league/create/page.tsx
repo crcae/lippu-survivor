@@ -4,7 +4,10 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Dices, Sparkles } from "lucide-react";
 import { Button, Card, useToast } from "@/components/ui";
-import { createLeagueInDb } from "@/lib/services/survivor-db";
+import {
+  createLeagueInDb,
+  getCurrentUser,
+} from "@/lib/services/survivor-db";
 import { useAuthGate } from "@/hooks/useAuthGate";
 import { getSupabaseEnv } from "@/lib/supabase/client";
 import { SEASON_YEAR } from "@/lib/mock-survivor-data";
@@ -20,6 +23,40 @@ function generateInviteCode(): string {
     () => CODE_CHARS[Math.floor(Math.random() * CODE_CHARS.length)],
   ).join("");
   return `LIP${random}`;
+}
+
+/**
+ * Fire-and-forget admin email for a newly created league. Never blocks the
+ * redirect and never throws — SMTP/Resend failures only log. Covers both paid
+ * and free leagues (this form currently creates free leagues; paid ones are
+ * created through the same `createLeagueInDb` path).
+ */
+async function notifyLeagueCreated(opts: {
+  leagueId: string;
+  leagueName: string;
+  mode: "paid" | "free";
+  entryFee: number;
+  inviteCode: string;
+}): Promise<void> {
+  try {
+    const user = await getCurrentUser();
+    await fetch("/api/admin/alerts", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        type: "league-created",
+        leagueId: opts.leagueId,
+        leagueName: opts.leagueName,
+        mode: opts.mode,
+        entryFee: opts.entryFee,
+        inviteCode: opts.inviteCode,
+        creatorName: user?.displayName,
+        creatorEmail: user?.email,
+      }),
+    });
+  } catch (err) {
+    console.error("[league-created] Alerta de admin omitida:", err);
+  }
 }
 
 const inputClass =
@@ -83,6 +120,13 @@ export default function CreateLeaguePage() {
       });
       setSubmitting(false);
       success("¡Liga creada correctamente!");
+      void notifyLeagueCreated({
+        leagueId,
+        leagueName: leagueName.trim(),
+        mode: "free",
+        entryFee: 0,
+        inviteCode: inviteCode.toUpperCase(),
+      });
       setTimeout(() => {
         router.push(`/league/${leagueId}`);
       }, 1100);

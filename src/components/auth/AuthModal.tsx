@@ -161,6 +161,24 @@ export function AuthModal({ isOpen, onClose, supabase }: AuthModalProps) {
           reset();
           return;
         }
+        // Best-effort: seed the `public.profiles` row with the chosen display
+        // name so leaderboards/standings resolve it immediately. The AuthContext
+        // listener also upserts on SIGNED_IN, so this is just a guarantee.
+        if (data.user) {
+          try {
+            await supabase.from("profiles").upsert(
+              {
+                id: data.user.id,
+                email: data.user.email,
+                display_name: displayName.trim(),
+                avatar_url: data.user.user_metadata?.avatar_url ?? null,
+              },
+              { onConflict: "id" },
+            );
+          } catch {
+            // Never block signup because of a best-effort profile seed.
+          }
+        }
         handleClose();
       }
     } catch (err) {

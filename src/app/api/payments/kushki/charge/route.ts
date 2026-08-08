@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { PLATFORM_FEE_PERCENT } from "@/lib/survivor-utils";
-import { sendAdminAlert } from "@/lib/notifications/admin-alert";
+import { sendAdminEmail } from "@/lib/notifications/send-admin-email";
 
 export const runtime = "nodejs";
 
@@ -592,7 +592,7 @@ export async function POST(request: Request) {
   }
 
   // ── Admin notification (fire-and-forget, never blocks the response) ────────
-  void sendAdminAlert({
+  void sendAdminEmail({
     subject: `💰 Pago aprobado: $${totalAmount.toFixed(2)} — ${league.name}`,
     text: [
       `Nuevo pago completado en Lippu Survivor`,
