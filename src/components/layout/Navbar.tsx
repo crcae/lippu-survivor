@@ -3,13 +3,13 @@
 import { useRef, useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ChevronDown, LogOut, Menu, UserRound, X } from "lucide-react";
+import { ChevronDown, LogOut, Menu, Trophy, UserRound, X } from "lucide-react";
 import { MyLeaguesDropdown } from "@/components/navigation/MyLeaguesDropdown";
 import { useAuth } from "@/context/AuthContext";
 
 const NAV_LINKS = [
   { href: "/", label: "Explorar Ligas" },
-  { href: "/my-leagues", label: "Mis Ligas" },
+  { href: "/mis-ligas", label: "Mis Ligas" },
   { href: "/create-league", label: "Crear Liga" },
   { href: "/league/join", label: "Unirse con Código" },
 ];
@@ -83,7 +83,7 @@ export function Navbar() {
         {/* Desktop links */}
         <div className="hidden md:flex items-center gap-1">
           {NAV_LINKS.map((link) =>
-            link.href === "/my-leagues" ? (
+            link.href === "/mis-ligas" ? (
               <MyLeaguesDropdown key={link.href} />
             ) : (
               <Link
@@ -151,12 +151,20 @@ export function Navbar() {
                   </div>
                   <div className="p-1.5 space-y-0.5">
                     <Link
-                      href="/my-leagues"
+                      href="/mis-ligas"
+                      onClick={() => setAccountOpen(false)}
+                      className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium text-text-primary hover:bg-surface transition-colors"
+                    >
+                      <Trophy className="w-4 h-4 text-info" />
+                      Mis Ligas
+                    </Link>
+                    <Link
+                      href="/perfil"
                       onClick={() => setAccountOpen(false)}
                       className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl text-sm font-medium text-text-primary hover:bg-surface transition-colors"
                     >
                       <UserRound className="w-4 h-4 text-info" />
-                      Mi Cuenta
+                      Mi Perfil
                     </Link>
                     <button
                       type="button"
@@ -195,7 +203,7 @@ export function Navbar() {
             {/* Profile block (authenticated) */}
             {!loading && !isGuest && profile && (
               <Link
-                href="/my-leagues"
+                href="/mis-ligas"
                 onClick={() => setIsMenuOpen(false)}
                 className="flex items-center gap-3 rounded-2xl bg-zinc-900/70 border border-zinc-800 p-3 mb-1 hover:border-purple-500/40 transition-colors focus-ring"
               >
@@ -211,8 +219,19 @@ export function Navbar() {
                   </span>
                 </span>
                 <span className="shrink-0 px-2.5 py-1 rounded-full bg-purple-500/15 text-purple-300 text-[10px] font-semibold uppercase tracking-wider">
-                  Mi Cuenta
+                  Mis Ligas
                 </span>
+              </Link>
+            )}
+
+            {!loading && !isGuest && (
+              <Link
+                href="/perfil"
+                onClick={() => setIsMenuOpen(false)}
+                className="min-h-[44px] inline-flex items-center gap-2.5 px-4 py-3 rounded-xl text-sm font-semibold text-text-secondary hover:text-text-primary hover:bg-surface transition-colors focus-ring"
+              >
+                <UserRound className="w-4 h-4 text-info" />
+                Mi Perfil
               </Link>
             )}
 

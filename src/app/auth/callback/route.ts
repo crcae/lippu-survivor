@@ -11,8 +11,8 @@ import { createClient } from "@/lib/supabase/server";
 export async function GET(request: Request) {
   const { searchParams, origin } = new URL(request.url);
   const code = searchParams.get("code");
-  const next = searchParams.get("next") ?? "/my-leagues";
-  const fallback = "/my-leagues";
+  const next = searchParams.get("next") ?? "/mis-ligas";
+  const fallback = "/mis-ligas";
 
   const safeNext = next.startsWith("/") ? next : fallback;
 

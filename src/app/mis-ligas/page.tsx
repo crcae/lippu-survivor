@@ -48,7 +48,7 @@ function LeagueCard({
   const notJoined = league.isCommissioner && league.userEntriesCount === 0;
 
   return (
-    <Card variant="elevated" className="p-5 space-y-4 flex flex-col">
+    <Card variant="elevated" className="p-4 sm:p-5 space-y-4 flex flex-col">
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <h3 className="font-bold text-text-primary truncate">
@@ -75,8 +75,8 @@ function LeagueCard({
         )}
       </div>
 
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {notJoined ? (
             <Badge variant="default">
               <span className="w-1.5 h-1.5 rounded-full bg-text-secondary" />
@@ -102,7 +102,7 @@ function LeagueCard({
             <Badge variant="default">Gratis</Badge>
           )}
         </div>
-        <span className="inline-flex items-center gap-1.5 text-xs text-text-secondary">
+        <span className="inline-flex items-center gap-1.5 text-xs text-text-secondary shrink-0">
           <Users className="w-3.5 h-3.5" />
           {league.remainingEntries}/{league.totalEntries} vivos
         </span>
@@ -208,8 +208,8 @@ function TabButton({
   );
 }
 
-export default function MyLeaguesPage() {
-  const { profile, isGuest } = useAuth();
+export default function MisLigasPage() {
+  const { profile } = useAuth();
   const [loading, setLoading] = useState(true);
   const [leagues, setLeagues] = useState<EnrolledLeague[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -294,22 +294,22 @@ export default function MyLeaguesPage() {
   }
 
   return (
-    <main className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 py-10">
+    <main className="relative z-10 max-w-6xl mx-auto px-4 sm:px-6 py-8 sm:py-10">
       <div className="fixed inset-0 pointer-events-none overflow-hidden">
         <div className="absolute top-[-20%] right-[-10%] w-[500px] h-[500px] rounded-full bg-primary/5 blur-[120px]" />
         <div className="absolute bottom-[-10%] left-[-10%] w-[400px] h-[400px] rounded-full bg-accent/5 blur-[100px]" />
       </div>
 
-      <div className="relative space-y-10">
+      <div className="relative space-y-8">
         {/* Header */}
         <div className="flex flex-wrap items-end justify-between gap-4">
-          <div>
+          <div className="min-w-0">
             <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-surface-elevated border border-border text-sm text-accent font-medium mb-3">
               <Trophy className="w-4 h-4 text-primary" />
-              Mi Cuenta y Ligas
+              Mis Ligas
             </div>
-            <h1 className="text-3xl sm:text-4xl font-bold tracking-tight">
-              Mi Cuenta y Ligas
+            <h1 className="text-2xl sm:text-4xl font-bold tracking-tight truncate">
+              Hola, {profile?.displayName?.split(" ")[0] || "Jugador"} 👋
             </h1>
             <p className="text-text-secondary mt-2">
               Temporada {SEASON_YEAR} · {activeLeagues.length} liga
@@ -336,53 +336,6 @@ export default function MyLeaguesPage() {
           </div>
         </div>
 
-        {/* Profile card */}
-        <Card variant="elevated" className="p-6 sm:p-8">
-          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
-            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-purple-600 to-indigo-600 flex items-center justify-center text-3xl font-black text-white shadow-lg shadow-purple-600/30 shrink-0">
-              {(profile?.displayName?.[0] || "L").toUpperCase()}
-            </div>
-            <div className="text-center sm:text-left flex-1 min-w-0">
-              <p className="text-xs uppercase tracking-wider text-text-secondary">
-                Cuenta
-              </p>
-              <h2 className="text-2xl font-bold text-text-primary truncate">
-                {profile?.displayName || profile?.email?.split("@")[0] || "Jugador"}
-              </h2>
-              <p className="text-sm text-text-secondary truncate mt-0.5">
-                {isGuest
-                  ? "Inicia sesión para sincronizar tu cuenta"
-                  : (profile?.email ?? "")}
-              </p>
-              <div className="flex flex-wrap justify-center sm:justify-start gap-2 mt-4">
-                <Badge variant="success">
-                  <Trophy className="w-3 h-3" />
-                  {activeLeagues.length} Liga
-                  {activeLeagues.length === 1 ? "" : "s"} Activa
-                  {activeLeagues.length === 1 ? "" : "s"}
-                </Badge>
-                <Badge variant="warning">
-                  <Crown className="w-3 h-3" />
-                  {commissionerLeagues.length} Comisionado
-                  {commissionerLeagues.length === 1 ? "" : "s"}
-                </Badge>
-                <Badge variant="info">
-                  <Users className="w-3 h-3" />
-                  Jugador
-                </Badge>
-              </div>
-              <a
-                href="https://wa.me/523322547372?text=Hola%21%20Tengo%20una%20consulta%20sobre%20Lippu%20Survivor"
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-purple-400 hover:underline flex items-center gap-1 mt-4 justify-center sm:justify-start"
-              >
-                💬 Contactar Soporte por WhatsApp
-              </a>
-            </div>
-          </div>
-        </Card>
-
         {error && (
           <Card className="border-danger/40 bg-danger/10">
             <p className="text-sm text-danger">{error}</p>
@@ -390,7 +343,7 @@ export default function MyLeaguesPage() {
         )}
 
         {leagues.length === 0 && !error ? (
-          <Card variant="elevated" className="p-12 text-center space-y-4">
+          <Card variant="elevated" className="p-10 sm:p-12 text-center space-y-4">
             <span className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-surface-elevated border border-border mx-auto">
               <Trophy className="w-8 h-8 text-text-secondary" />
             </span>
@@ -421,7 +374,7 @@ export default function MyLeaguesPage() {
         ) : (
           <>
             {/* Tabs */}
-            <div className="flex flex-col sm:flex-row gap-2">
+            <div className="flex flex-col sm:flex-row gap-2 overflow-x-auto">
               <TabButton
                 active={tab === "activas"}
                 onClick={() => setTab("activas")}
@@ -432,7 +385,7 @@ export default function MyLeaguesPage() {
                 active={tab === "comisionado"}
                 onClick={() => setTab("comisionado")}
               >
-                Mis Ligas como Comisionado ({tabCounts.comisionado})
+                Como Comisionado ({tabCounts.comisionado})
               </TabButton>
               {endedPlayerLeagues.length > 0 && (
                 <TabButton

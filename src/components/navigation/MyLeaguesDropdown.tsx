@@ -108,7 +108,7 @@ export function MyLeaguesDropdown() {
     return () => clearTimeout(close);
   }, [pathname]);
 
-  const isActive = pathname === "/my-leagues";
+  const isActive = pathname === "/mis-ligas";
   const activeCount = leagues.filter(
     (league) => league.leagueStatus === "active",
   ).length;

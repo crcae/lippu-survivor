@@ -121,6 +121,10 @@ export function AuthModal({ isOpen, onClose, supabase }: AuthModalProps) {
       setError("Ingresa un correo válido y una contraseña de al menos 6 caracteres.");
       return;
     }
+    if (mode === "signup" && !displayName.trim()) {
+      setError("Ingresa tu nombre de jugador para crear tu cuenta.");
+      return;
+    }
 
     setError(null);
     setInfo(null);
@@ -142,8 +146,8 @@ export function AuthModal({ isOpen, onClose, supabase }: AuthModalProps) {
           email: email.trim(),
           password,
           options: {
-            data: { display_name: displayName.trim() || null },
-            emailRedirectTo: authCallbackUrl("/my-leagues"),
+            data: { display_name: displayName.trim() },
+            emailRedirectTo: authCallbackUrl("/mis-ligas"),
           },
         });
         if (authError) {
@@ -240,16 +244,20 @@ export function AuthModal({ isOpen, onClose, supabase }: AuthModalProps) {
           <form onSubmit={(e) => void handleEmailSubmit(e)} className="space-y-3">
             {mode === "signup" && (
               <div className="space-y-1.5">
-                <label htmlFor="auth-display-name" className="text-sm font-semibold text-text-primary">
-                  Nombre de jugador
+                <label
+                  htmlFor="auth-display-name"
+                  className="text-sm font-semibold text-text-primary"
+                >
+                  Nombre completo
                 </label>
                 <input
                   id="auth-display-name"
                   type="text"
                   value={displayName}
                   onChange={(e) => setDisplayName(e.target.value)}
-                  placeholder="Ej. Matías"
+                  placeholder="Tu nombre visible en las ligas"
                   maxLength={40}
+                  required
                   autoComplete="name"
                   className={inputClass}
                 />

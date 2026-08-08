@@ -30,6 +30,13 @@ export function getSupabaseEnv(): SupabaseEnv {
  * Use inside client components/hooks. Reads the public env vars
  * `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
  *
+ * Sessions PERSIST (cookies): users stay logged in across page reloads,
+ * browser restarts and PWA sessions. `autoRefreshToken` keeps the access
+ * token fresh before it expires, so sessions are never aggressively
+ * invalidated while the app is open. To extend the raw JWT lifetime itself,
+ * raise "Access Token (JWT) expiration" in the Supabase Auth dashboard; the
+ * refresh token continues to renew indefinitely while active.
+ *
  * Throws a descriptive error naming exactly which env vars are missing so the
  * caller can surface it verbatim in the UI (toast/console).
  */
@@ -44,5 +51,12 @@ export function createClient() {
     );
   }
 
-  return createBrowserClient(url, anonKey);
+  return createBrowserClient(url, anonKey, {
+    auth: {
+      // Stay logged in across reloads, browser restarts and PWA sessions.
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true,
+    },
+  });
 }

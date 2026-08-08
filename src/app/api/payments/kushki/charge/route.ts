@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAdminClient } from "@/lib/supabase/admin";
 import { PLATFORM_FEE_PERCENT } from "@/lib/survivor-utils";
+import { sendAdminAlert } from "@/lib/notifications/admin-alert";
 
 export const runtime = "nodejs";
 
@@ -589,6 +590,21 @@ export async function POST(request: Request) {
   } catch (err) {
     console.error("[CRITICAL DB ERROR] No se pudo actualizar leagues.bolsa_total:", err);
   }
+
+  // ── Admin notification (fire-and-forget, never blocks the response) ────────
+  void sendAdminAlert({
+    subject: `💰 Pago aprobado: $${totalAmount.toFixed(2)} — ${league.name}`,
+    text: [
+      `Nuevo pago completado en Lippu Survivor`,
+      `————————————`,
+      `Usuario: ${userName ?? "Jugador"} (${userEmail ?? "correo no enviado"})`,
+      `Liga: ${league.name} (${leagueId})`,
+      `Total pagado: $${totalAmount.toFixed(2)} MXN`,
+      `Ticket Kushki: ${ticketId}`,
+      `paymentId: ${paymentId ?? "no persistido"}`,
+      `bolsa_total: ${newBolsaTotal ?? "no calculada"}`,
+    ].join("\n"),
+  });
 
   // 5) ALWAYS return success after Kushki approval — the user paid.
   return NextResponse.json(
